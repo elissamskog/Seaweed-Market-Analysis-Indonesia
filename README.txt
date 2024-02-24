@@ -1,3 +1,6 @@
+**NOTE: location_id is an internal id that we use for locations in the form city.island, the identifier for a location
+in the location collection is not the same.
+
 
 Database Schema in firestore:
 
@@ -37,8 +40,11 @@ Database Schema in firestore:
     Serialized Supply Chain Network Graph object
 
 Network Graph (Supply Chain Network)
+This is a simplified Network of our supply_chain which only looks at unique location id's (city.island id's)
+
 Nodes: Represent locations (based on location_id). Each node is created once per unique location_id, with the address of the first instance of that location_id being used.
-Edges: Represent routes between locations. Edges are created based on the from and to fields in the Routes collection, with costs and other details from the route's data.
+Edges: Represent routes between locations. Edges are created based on the from and to fields in the Routes collection, with costs and other details from the route's data. If this data is unavailable, googlemaps calculates the cost.
+e.g. {type: volume, {30: 200, 60:300}} means 30m3 costs 200 euros, and 60m3 costs 300 euros
 Logic for Handling Shared Locations
 When adding a customer or a new location, if a node with the same location_id already exists in the network graph, the new customer or location will share that node. Otherwise, a new node is created.
 Batches are associated with locations based on the location_id in the Batches collection.
