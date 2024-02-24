@@ -43,24 +43,6 @@ locations = {
             "farm.grc_ulva_ctni.mksr.slwsi": "Dusun Sampulungan Caddi, Desa Sampulungan, Kec. Galesong Utara, Kabupaten Takalar, Sulawesi Selatan 92255"
         }
 
-weather_data = pd.read_excel('/Users/elissamskog/JupyterProjects/alginnova/Prices/Data/weather_data.xlsx')
-
-# Function to upload weather data to Firestore
-def upload_weather_data(df):
-    for index, row in df.iterrows():
-        region = row['Region']
-        date = row['Date'].strftime('%Y-%m-%d')  # Format the date as a string if necessary
-        weather_doc = {
-            'Temperature_Max': row['Temperature_Max'],
-            'Temperature_Min': row['Temperature_Min'],
-            'Precipitation_Sum': row['Precipitation_Sum'],
-            'Wind_Speed_Max': row['Wind_Speed_Max'],
-            'Sunshine_Duration': row['Sunshine_Duration'],
-            'Radiation': row['Radiation (MJ/m2)']
-        }
-        # Add the document to Firestore
-        db.collection('weather').document(region).collection('data').document(date).set(weather_doc)
-
 
 shipping_info = {
     "port.bima.java-port.smg.java": {"32.6m3": 1242, "67m3": 1538},

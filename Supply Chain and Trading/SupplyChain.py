@@ -182,7 +182,7 @@ class SupplyChain():
                     # Calculate transportation cost between locations
                     location_data = self.SCN.nodes[location]
                     location_address = location_data.get('address')
-                    cost = self.compute_cost(address, location_address)
+                    cost = self.compute_cost(address, location_address) # Change to tiers!!
                     self.SCN.add_edge(customer_node, location, weight=cost)
                     self.SCN.add_edge(location, customer_node, weight=cost)
 
