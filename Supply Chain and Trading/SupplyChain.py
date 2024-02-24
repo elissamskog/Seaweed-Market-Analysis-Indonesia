@@ -30,19 +30,21 @@ class SupplyChain():
         batch.commit()
         print("Shelf life updated for all batches in batch write")
 
-    def add_location(self, location_id, address):
-        # Add a new location to the Firestore database
-        location_ref = self.db.collection('locations').document(location_id)
-        location_ref.set({'address': address})
+    def add_location(self, location_id, address, id, type):
+        # Add a new location to the Firestore database, type is either port, farm or warehouse
+        location_ref = self.db.collection('locations').document(id)
+        location_ref.set({'address': address, 'location_id': location_id, 'type': type})
         print(f"Location {location_id} added with address: {address}")
 
-    def add_route(self, from_location, to_location, volumes):
-        # Add a new route to the Firestore database
+    def add_route(self, from_location, to_location, quantity_tiers, type):
+        # Add a new route to the Firestore database, quantity_tiers is a dictionary with tiers of cost for each quantity tier
+        # type is the type of quantity tier being used, either volume or weight
         route_id = f"{from_location}-{to_location}"
         route_doc = {
             'from': from_location,
             'to': to_location,
-            'volumes': volumes
+            'type': type,
+            'cost': quantity_tiers
         }
         self.db.collection('routes').document(route_id).set(route_doc)
         print(f"Route from {from_location} to {to_location} added")
@@ -64,11 +66,11 @@ class SupplyChain():
         else:
             print(f"Batch {batch_id} not found")
 
-    def update_route(self, from_location, to_location, new_volumes):
+    def update_route(self, from_location, to_location, new_cost_tiers):
         # Update an existing route with new cost and volume data
         route_id = f"{from_location}-{to_location}"
         route_ref = self.db.collection('routes').document(route_id)
-        route_ref.update({'volumes': new_volumes})
+        route_ref.update({'cost': new_cost_tiers})
         print(f"Route from {from_location} to {to_location} updated")
 
     def add_customer(self, customer_id, quantity_required, address, species, location_id):
@@ -164,7 +166,7 @@ class SupplyChain():
 
         existing_node = None
         for node in self.SCN.nodes:
-            if node.endswith(location_id):
+            if node == location_id:
                 existing_node = node
                 break
 
