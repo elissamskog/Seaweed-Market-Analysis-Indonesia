@@ -9,3 +9,4 @@ def compute_distance(location, destination):
 
     distance_info = distance_result['rows'][0]['elements'][0]['distance']
     distance_value_km = distance_info['value']/1000
+    return distance_value_km

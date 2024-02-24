@@ -183,3 +183,9 @@ class SupplyChain():
                     cost = self.compute_cost(address, location_address)
                     self.SCN.add_edge(customer_node, location, weight=cost)
                     self.SCN.add_edge(location, customer_node, weight=cost)
+
+    def store_network(self):
+        return 0
+
+    def read_network(self):
+        self.SCN = stored_SCN
