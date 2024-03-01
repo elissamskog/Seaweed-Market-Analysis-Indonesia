@@ -2,11 +2,15 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
 import networkx as nx
+from networkx.readwrite import json_graph
 from google_distance import compute_distance
 from trading_opt import optimize
+import json
+
 
 # Firebase Admin SDK Initialization
-cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
+#cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
+cred = credentials.Certificate("C:/Users/August/alginnova_jobb/firebaseAPI/firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json")
 firebase_admin.initialize_app(cred)
 
 # Firestore client instance
@@ -30,11 +34,17 @@ class SupplyChain():
         batch.commit()
         print("Shelf life updated for all batches in batch write")
 
-    def add_location(self, location_id, address, id, type):
+    def add_location(self, location_id, address, id, type): # Spara med bättre Document ID?
         # Add a new location to the Firestore database, type is either port, farm or warehouse
         location_ref = self.db.collection('locations').document(id)
         location_ref.set({'address': address, 'location_id': location_id, 'type': type})
         print(f"Location {location_id} added with address: {address}")
+
+         # Rebuild the SCN object with the new location included
+        self.build_network_graph()
+
+        # Store the updated SCN object in Firestore
+        self.store_network()
 
     def add_route(self, from_location, to_location, quantity_tiers, type):
         # Add a new route to the Firestore database, quantity_tiers is a dictionary with tiers of cost for each quantity tier
@@ -48,6 +58,12 @@ class SupplyChain():
         }
         self.db.collection('routes').document(route_id).set(route_doc)
         print(f"Route from {from_location} to {to_location} added")
+
+        # Rebuild the SCN object with the new route included
+        self.build_network_graph()
+
+        # Store the updated SCN object in Firestore
+        self.store_network()
 
     def add_batch(self, batch_id, batch_data):
         # Add a new batch to the 'batches' collection
@@ -129,17 +145,28 @@ class SupplyChain():
                     G.add_edge(loc2, loc1, **edge_data)
 
         self.SCN = G
+       
         
-    def fill_demand(self, SCN, customer_id, weight_required):
+    def fill_demand(self, customer_id, weight_required, document_id): # ändra efter read__network
+        # Load the most current state of the SCN
+        self.read_network(document_id)
+
+        # Now the SCN is updated, connect the customer to the network
+        # Assuming the method signature of connect_customer_to_network is (self, address, location_id, customer_id)
+        # And assuming you have the customer's address and location_id available
+        # You might need to fetch these details from Firestore if not already available in the method call
         customer_ref = self.db.collection('customers').document(customer_id)
-        customer = customer_ref.get()
-        if not customer.exists:
+        customer_doc = customer_ref.get()
+        if customer_doc.exists:
+            customer_data = customer_doc.to_dict()
+            self.connect_customer_to_network(customer_data['address'], customer_data['location_id'], customer_id)
+        else:
             print(f"No customer found with ID {customer_id}")
             return
 
-        customer_data = customer.to_dict()
+        customer_data = customer_doc.to_dict()
         demanded_species = customer_data.get('demand_species')
-        location_id = customer.get("location_id")
+        location_id = customer_doc.get("location_id")
 
         # Fetch batches that match the demanded species
         demanded_batches = {}
@@ -157,7 +184,7 @@ class SupplyChain():
                 }
 
         # Optimize transportation costs
-        results = optimize(SCN, demanded_batches, location_id, weight_required)
+        results = optimize(self.SCN, demanded_batches, location_id, weight_required)
 
         return results
 
@@ -186,8 +213,97 @@ class SupplyChain():
                     self.SCN.add_edge(customer_node, location, weight=cost)
                     self.SCN.add_edge(location, customer_node, weight=cost)
 
-    def store_network(self):
-        return 0
+    def store_network(self): # Store Documents with more well thought out names 
+        # ta bort nuvarande network
+    
+        # Serialize the NetworkX graph to a JSON-serializable dict
+        stored_SCN = nx.readwrite.json_graph.node_link_data(self.SCN)
+        graph_json = json.dumps(stored_SCN)
 
-    def read_network(self):
-        self.SCN = stored_SCN
+        # Store the serialized graph in Firebase Firestore
+        collection_ref = db.collection('networks')
+        doc_ref = collection_ref.document('test') #Document_id names
+        doc_ref.set({'network_': graph_json})
+
+        print(f"Graph stored in Firestore collection networks with document ID {doc_ref.id}")
+
+    def read_network(self, document_id): # ta bort document_id
+         # Fetch the serialized graph from Firestore
+        doc_ref = self.db.collection('networks').document(document_id)
+        doc = doc_ref.get()
+
+        if doc.exists:
+            # Deserialize the graph data from JSON back to a dictionary
+            graph_data = json.loads(doc.to_dict()['network_'])
+
+            # Use the dictionary to recreate the NetworkX graph
+            self.SCN = json_graph.node_link_graph(graph_data)
+            
+
+            print(f"Graph with document ID {document_id} successfully read and reconstructed.")
+        else:
+            print(f"No document found with ID {document_id}")
+            self.SCN = None
+
+
+
+### Tester ###
+def test():
+    supply_chain = SupplyChain()
+
+    supply_chain.build_network_graph()
+    #supply_chain.SCN = nx.Graph()
+
+    SCN = nx.Graph()
+
+    '''# Add mock locations
+    supply_chain.SCN.add_node("Location_A")
+    supply_chain.SCN.add_node("Location_B")
+    supply_chain.SCN.add_node("Customer_Location")
+
+
+    # Add mock routes with tiered costs
+    supply_chain.SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
+    supply_chain.SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})'''
+
+    # Add mock locations
+    SCN.add_node("Location_A")
+    SCN.add_node("Location_B")
+    SCN.add_node("Customer_Location")
+
+    # Add mock routes with tiered costs
+    SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
+    SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})
+    
+    supply_chain.store_network()
+
+    supply_chain.read_network('test')
+
+    #print(compare_graphs(supply_chain.SCN, SCN))
+
+def compare_graphs(g1, g2):
+    # Check for isomorphism
+    if not nx.is_isomorphic(g1, g2):
+        return False, "Graphs are not isomorphic."
+    
+    # Check node attributes
+    for node in g1.nodes:
+        if g1.nodes[node] != g2.nodes[node]:
+            return False, f"Node attributes differ for node {node}."
+    
+    # Check edge attributes
+    for edge in g1.edges:
+        if g1.edges[edge] != g2.edges[edge]:
+            return False, f"Edge attributes differ for edge {edge}."
+    
+    # If all checks passed
+    return True, "Graphs are isomorphic and all attributes match."
+
+# Example usage:
+# g1 and g2 are your NetworkX graph objects
+# is_equal, message = compare_graphs(g1, g2)
+# print(message)
+
+
+if __name__ == "__main__":
+    test()

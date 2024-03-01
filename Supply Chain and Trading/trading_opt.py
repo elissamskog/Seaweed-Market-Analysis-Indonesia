@@ -125,7 +125,7 @@ def calculate_tier_cost(tiers, amount):
     return total_cost
 
 
-# Mock Supply Chain Network (SCN) setup
+'''# Mock Supply Chain Network (SCN) setup
 SCN = nx.Graph()
 
 # Add mock locations
@@ -149,4 +149,4 @@ weight_required = 100
 
 # Function calls
 results = optimize(SCN, batches, "Customer_Location", weight_required)
-print("Optimization Results:", results)
+print("Optimization Results:", results)'''
