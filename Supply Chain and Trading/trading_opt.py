@@ -2,8 +2,8 @@ import pulp
 import networkx as nx
 
 
-def optimize(SCN, batches, location_id, weight_required):
-    results = optimize_transportation_costs(SCN, batches, location_id, weight_required)
+def optimize(SCN, batches, destination, weight_required):
+    results = optimize_transportation_costs(SCN, batches, destination, weight_required)
 
     batches_to_send = {}
     remaining_weight = weight_required
@@ -19,17 +19,17 @@ def optimize(SCN, batches, location_id, weight_required):
     return batches_to_send
 
 
-def optimize_transportation_costs(SCN, batches, location_id, weight_required):
+def optimize_transportation_costs(SCN, batches, destination, weight_required):
     # Initialize the linear programming problem
     problem = pulp.LpProblem("Minimize_Transportation_Costs", pulp.LpMinimize)
 
-    # Calculate transportation cost for each batch and store paths
+    # Objective Function and optimal paths sets
     batch_costs = {}
     batch_paths = {}
     for i in batches:
         weight = batches[i]['weight']
         volume = batches[i]['volume']
-        path = find_optimal_path(SCN, batches[i]['location'], location_id, weight, volume)
+        path = find_optimal_path(SCN, batches[i]['location_id'], destination, weight, volume)
         cost = compute_total_cost(SCN, path, weight, volume)
         batch_costs[i] = cost
         batch_paths[i] = path
@@ -53,7 +53,7 @@ def optimize_transportation_costs(SCN, batches, location_id, weight_required):
     results = {}
     for batch_id in batches:
         send_decision = pulp.value(send_batch[batch_id])
-        results[batch_id] = {'send': send_decision, 'cost': batch_costs[batch_id], 'path': find_optimal_path(SCN, batches[batch_id]['location'], location_id, batches[batch_id]['weight'], batches[batch_id]['volume'])}
+        results[batch_id] = {'send': send_decision, 'cost': batch_costs[batch_id], 'path': find_optimal_path(SCN, batches[batch_id]['location_id'], destination, batches[batch_id]['weight'], batches[batch_id]['volume'])}
     return results
 
 def compute_total_cost(SCN, path, weight, volume):
