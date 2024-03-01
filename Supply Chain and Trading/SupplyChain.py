@@ -166,7 +166,7 @@ class SupplyChain():
 
         existing_node = None
         for node in self.SCN.nodes:
-            if node == location_id:
+            if node == location_id.endswith(node):
                 existing_node = node
                 break
 
