@@ -147,9 +147,9 @@ class SupplyChain():
         self.SCN = G
        
         
-    def fill_demand(self, customer_id, weight_required, document_id): # ändra efter read__network
+    def fill_demand(self, customer_id, weight_required):
         # Load the most current state of the SCN
-        self.read_network(document_id)
+        self.read_network()
 
         # Now the SCN is updated, connect the customer to the network
         # Assuming the method signature of connect_customer_to_network is (self, address, location_id, customer_id)
@@ -213,37 +213,47 @@ class SupplyChain():
                     self.SCN.add_edge(customer_node, location, weight=cost)
                     self.SCN.add_edge(location, customer_node, weight=cost)
 
-    def store_network(self): # Store Documents with more well thought out names 
-        # ta bort nuvarande network
-    
+    def store_network(self):
+        # Reference to the 'networks' collection
+        collection_ref = self.db.collection('networks')
+        
+        # Attempt to delete the existing document, assuming a single document management strategy
+        for doc in collection_ref.stream():
+            doc.reference.delete()
+            print(f"Deleted existing document: {doc.id}")
+
         # Serialize the NetworkX graph to a JSON-serializable dict
         stored_SCN = nx.readwrite.json_graph.node_link_data(self.SCN)
         graph_json = json.dumps(stored_SCN)
 
-        # Store the serialized graph in Firebase Firestore
-        collection_ref = db.collection('networks')
-        doc_ref = collection_ref.document('test') #Document_id names
+        # Since we're assuming a single document strategy, we can use a fixed document name
+        # If you want to make it dynamic or based on some attribute, adjust accordingly
+        doc_name = "current_network"
+        doc_ref = collection_ref.document(doc_name)  # Use a consistent document name
         doc_ref.set({'network_': graph_json})
 
-        print(f"Graph stored in Firestore collection networks with document ID {doc_ref.id}")
+        print(f"Graph stored in Firestore collection networks with document name {doc_name}")
 
-    def read_network(self, document_id): # ta bort document_id
-         # Fetch the serialized graph from Firestore
-        doc_ref = self.db.collection('networks').document(document_id)
-        doc = doc_ref.get()
 
-        if doc.exists:
+    def read_network(self):
+        # Fetch all documents in the 'networks' collection
+        docs = self.db.collection('networks').limit(1).stream()
+
+        # Attempt to get the first document from the iterator
+        doc = next(docs, None)
+
+        if doc:
             # Deserialize the graph data from JSON back to a dictionary
             graph_data = json.loads(doc.to_dict()['network_'])
 
             # Use the dictionary to recreate the NetworkX graph
             self.SCN = json_graph.node_link_graph(graph_data)
-            
 
-            print(f"Graph with document ID {document_id} successfully read and reconstructed.")
+            print(f"Graph successfully read and reconstructed from document {doc.id}.")
         else:
-            print(f"No document found with ID {document_id}")
+            print("No document found in the 'networks' collection.")
             self.SCN = None
+
 
 
 
@@ -251,12 +261,12 @@ class SupplyChain():
 def test():
     supply_chain = SupplyChain()
 
-    supply_chain.build_network_graph()
-    #supply_chain.SCN = nx.Graph()
+    #supply_chain.build_network_graph()
+    supply_chain.SCN = nx.Graph()
 
     SCN = nx.Graph()
 
-    '''# Add mock locations
+    # Add mock locations
     supply_chain.SCN.add_node("Location_A")
     supply_chain.SCN.add_node("Location_B")
     supply_chain.SCN.add_node("Customer_Location")
@@ -264,7 +274,7 @@ def test():
 
     # Add mock routes with tiered costs
     supply_chain.SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
-    supply_chain.SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})'''
+    supply_chain.SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})
 
     # Add mock locations
     SCN.add_node("Location_A")
@@ -277,9 +287,9 @@ def test():
     
     supply_chain.store_network()
 
-    supply_chain.read_network('test')
+    supply_chain.read_network()
 
-    #print(compare_graphs(supply_chain.SCN, SCN))
+    print(compare_graphs(supply_chain.SCN, SCN))
 
 def compare_graphs(g1, g2):
     # Check for isomorphism
