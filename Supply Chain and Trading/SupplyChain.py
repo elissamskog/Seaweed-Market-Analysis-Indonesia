@@ -145,7 +145,6 @@ class SupplyChain():
                     G.add_edge(loc2, loc1, **edge_data)
 
         self.SCN = G
-       
         
     def fill_demand(self, customer_id, weight_required):
         # Load the most current state of the SCN
@@ -233,7 +232,6 @@ class SupplyChain():
         doc_ref.set({'network_': graph_json})
 
         print(f"Graph stored in Firestore collection networks with document name {doc_name}")
-
 
     def read_network(self):
         # Fetch all documents in the 'networks' collection
