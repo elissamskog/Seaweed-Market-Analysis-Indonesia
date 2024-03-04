@@ -1,3 +1,6 @@
+from SupplyChain import SupplyChain
+import networkx as nx
+
 def test():
     supply_chain = SupplyChain()
 
