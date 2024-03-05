@@ -1,152 +1,245 @@
-import pulp
 import networkx as nx
+import pulp
+from itertools import combinations, chain
+
+class Optimize:
+    def __init__(self, SCN, batches, destinations):
+        self.SCN = SCN
+        self.batches = batches
+        self.destinations = destinations
+        self.permutation_costs = self.compute_cost_permutations()
+        self.results = self.optimize_transportation_costs()
+
+    def optimize_transportation_costs(self):
+        problem = pulp.LpProblem("Minimize_Transportation_Costs", pulp.LpMinimize)
+        x = pulp.LpVariable.dicts("permutation", self.permutation_costs.keys(), cat='Binary')
+
+        problem += pulp.lpSum(x[perm] * self.permutation_costs[perm] for perm in self.permutation_costs)
+
+        # Add constraints for meeting weight requirements at each destination
+        # These are not strict constraints - if not met, that customer's demand remains unfulfilled
+        for dest in self.destinations:
+            problem += (pulp.lpSum(x[(batch_combo, dest_combo)] * sum(self.batches[batch]['weight'] for batch in batch_combo) 
+                        for batch_combo, dest_combo in self.permutation_costs.keys() if dest in dest_combo) 
+                        >= self.destinations[dest]['weight'], f"WeightRequirement_{dest}")
+
+        problem.solve()
+
+        results = {}
+        for perm in self.permutation_costs:
+            if pulp.value(x[perm]) == 1:
+                results[perm] = {'cost': self.permutation_costs[perm]}
+        return results
+
+    def compute_cost_permutations(self):
+        all_destination_combinations = []
+        for r in range(1, len(self.destinations) + 1):
+            all_destination_combinations.extend(combinations(self.destinations.keys(), r))
+
+        feasible_permutations = {}
+        for destination_combo in all_destination_combinations:
+            required_species = {self.destinations[dest]['species'] for dest in destination_combo}
+
+            for batch_combo in self.powerset(self.batches.keys()):
+                if self.matches_species(batch_combo, required_species):
+                    if self.meets_optimal_weight(batch_combo, destination_combo):
+                        cost, _ = self.calculate_cost_for_permutation(batch_combo, destination_combo)
+                        feasible_permutations[(batch_combo, destination_combo)] = cost
+        return feasible_permutations
+
+    def matches_species(self, batch_combo, required_species):
+        # Find the species present in the batch_combo
+        combo_species = {self.batches[batch]['species'] for batch in batch_combo}
+
+        # Check that all species in the combo are required by the destinations
+        if not combo_species.issubset(required_species):
+            return False
+
+        # Check if there's at least one species in the combo that matches the destinations
+        return bool(combo_species.intersection(required_species))
+
+    def meets_optimal_weight(self, batch_combo, destination_combo):
+        # Group batches and destinations by species
+        batch_weights_by_species = self.group_by_species(self.batches, batch_combo)
+        destination_weights_by_species = self.group_by_species(self.destinations, destination_combo)
+
+        # For each species, check if the total weight of batches meets/exceeds the destination requirement
+        for species in destination_weights_by_species:
+            total_destination_weight = destination_weights_by_species[species]
+            if species not in batch_weights_by_species:
+                continue  # No batches available for this species
+
+            combo_weight = batch_weights_by_species[species]
+
+            if combo_weight >= total_destination_weight:
+                # Check if removing any one batch falls below the requirement
+                for batch in batch_combo:
+                    if self.batches[batch]['species'] != species:
+                        continue  # Skip batches of different species
+                    weight_without_batch = combo_weight - self.batches[batch]['weight']
+                    if weight_without_batch < total_destination_weight:
+                        return True
+
+        return False
+
+    def group_by_species(self, entities, ids):
+        weights_by_species = {}
+        for id in ids:
+            species = entities[id]['species']
+            weight = entities[id]['weight']
+            if species not in weights_by_species:
+                weights_by_species[species] = 0
+            weights_by_species[species] += weight
+        return weights_by_species
+
+    @staticmethod
+    def powerset(iterable):
+        s = list(iterable)
+        return chain.from_iterable(combinations(s, r) for r in range(1, len(s)+1))
+
+    def calculate_cost_for_permutation(self, batch_combo, destination_combo):
+
+        temp_SCN = self.create_temp_SCN(batch_combo)
+
+        # Initialize path list to store the order of batches and destinations
+        path = []
+
+        # Find starting batch with shortest path to any destination
+        shortest_path_cost, starting_batch = self.find_starting_batch(batch_combo, destination_combo, temp_SCN)
+        path.append(starting_batch)
+
+        # Calculate the cost and path of collecting all batches
+        collection_cost, collection_path = self.calculate_collection_cost(temp_SCN, batch_combo, starting_batch)
+        path.extend(collection_path)
+
+        # Calculate the cost and path of delivering to each destination
+        delivery_cost, delivery_path = self.calculate_delivery_cost(temp_SCN, batch_combo, destination_combo)
+        path.extend(delivery_path)
+
+        total_cost = shortest_path_cost + collection_cost + delivery_cost
+        return total_cost, path
+
+    def find_starting_batch(self, batch_combo, destination_combo, SCN):
+        min_cost = float('inf')
+        starting_batch = None
+
+        # Iterate over each batch and destination pair to find the shortest path
+        for batch in batch_combo:
+            for destination in destination_combo:
+                cost = nx.shortest_path_length(SCN, source=self.batches[batch]['location'], target=self.destinations[destination]['location'], weight='cost')
+                if cost < min_cost:
+                    min_cost = cost
+                    starting_batch = batch
+
+        return min_cost, starting_batch
+
+    def calculate_collection_cost(self, batch_combo, starting_batch, SCN):
+        remaining_batches = set(batch_combo) - {starting_batch}
+        total_cost = 0
+        current_location = self.batches[starting_batch]['location']
+
+        collection_path = [current_location]
+
+        while remaining_batches:
+            next_batch, next_cost = self.find_next_closest_batch(current_location, remaining_batches, SCN)
+            total_cost += next_cost
+            current_location = self.batches[next_batch]['location']
+            collection_path.append(current_location)
+            remaining_batches.remove(next_batch)
+
+        return total_cost, collection_path
+
+    def find_next_closest_batch(self, current_location, remaining_batches, SCN):
+        min_cost = float('inf')
+        closest_batch = None
+
+        for batch in remaining_batches:
+            cost = nx.shortest_path_length(SCN, source=current_location, target=self.batches[batch]['location'], weight='cost')
+            if cost < min_cost:
+                min_cost = cost
+                closest_batch = batch
+
+        return closest_batch, min_cost
+
+    def calculate_delivery_cost(self, batch_combo, destination_combo, SCN):
+        total_cost = 0
+        current_location = self.batches[batch_combo[-1]]['location']
+
+        delivery_path = []
+
+        for destination in destination_combo:
+            cost = nx.shortest_path_length(SCN, source=current_location, target=self.destinations[destination]['location'], weight='cost')
+            total_cost += cost
+            current_location = self.destinations[destination]['location']
+            delivery_path.append(current_location)
+
+        return total_cost, delivery_path
+
+    def create_temp_SCN(self, batch_combo):
+        temp_SCN = self.SCN.copy()
+        total_weight = sum(self.batches[batch]['weight'] for batch in batch_combo)
+        total_volume = sum(self.batches[batch]['volume'] for batch in batch_combo)
+
+        for u, v, data in temp_SCN.edges(data=True):
+            edge_cost = self.compute_edge_cost(data, total_weight, total_volume)
+            temp_SCN[u][v]['cost'] = edge_cost
+
+        return temp_SCN
+
+    def compute_edge_cost(self, edge_data, weight, batch_volume):
+        """
+        Compute the cost of an edge based on weight and volume, considering the route type in edge_data.
+        """
+
+        route_type = edge_data.get('type')
+        tiers = edge_data.get('costs', {})
+
+        if route_type == 'weight':
+            return self.calculate_tier_cost(tiers, weight)
+        elif route_type == 'volume':
+            return self.calculate_tier_cost(tiers, batch_volume)
+        else:
+            return float('inf')    
+
+    def calculate_tier_cost(self, tiers, amount):
+        """
+        Calculate cost based on a given set of tiers and an amount.
+        """
+        sorted_tiers = sorted([(float(k), v) for k, v in tiers.items()], key=lambda x: x[0])
+        total_cost = 0
+        remaining_amount = amount
+
+        for tier_capacity, tier_cost in sorted_tiers:
+            if remaining_amount > 0:
+                if remaining_amount <= tier_capacity:
+                    total_cost += tier_cost
+                    break
+                else:
+                    total_cost += tier_cost
+                    remaining_amount -= tier_capacity
+
+        return total_cost
 
 
-def optimize(SCN, batches, destination, weight_required):
-    results = optimize_transportation_costs(SCN, batches, destination, weight_required)
+SCN = nx.DiGraph()
+SCN.add_edge("A", "B", cost=10)
+SCN.add_edge("B", "C", cost=15)
+SCN.add_edge("A", "C", cost=20)
 
-    batches_to_send = {}
-    remaining_weight = weight_required
-
-    for batch_id, data in results.items():
-        if data['send'] == 1:  # If the batch is to be sent
-            weight_to_send = min(batches[batch_id]['weight'], remaining_weight)
-            batches_to_send[batch_id] = {'path': data['path'], 'weight': weight_to_send, 'cost': data['cost']}
-            remaining_weight -= weight_to_send
-            if remaining_weight <= 0:
-                break
-
-    return batches_to_send
-
-
-def optimize_transportation_costs(SCN, batches, destination, weight_required):
-    # Initialize the linear programming problem
-    problem = pulp.LpProblem("Minimize_Transportation_Costs", pulp.LpMinimize)
-
-    # Objective Function and optimal paths sets
-    batch_costs = {}
-    batch_paths = {}
-    for i in batches:
-        weight = batches[i]['weight']
-        volume = batches[i]['volume']
-        path = find_optimal_path(SCN, batches[i]['location_id'], destination, weight, volume)
-        cost = compute_total_cost(SCN, path, weight, volume)
-        batch_costs[i] = cost
-        batch_paths[i] = path
-
-    # Sort batches by transportation cost
-    sorted_batches = sorted(batch_costs, key=batch_costs.get)
-
-    # Binary decision variables for each batch (1 = send, 0 = do not send)
-    send_batch = pulp.LpVariable.dicts("send_batch", sorted_batches, cat='Binary')
-
-    # Objective Function: Minimize the total transportation cost
-    problem += pulp.lpSum([send_batch[i] * batch_costs[i] for i in sorted_batches])
-
-    # Weight Requirement Constraint: Total weight sent must meet the required weight
-    problem += pulp.lpSum([send_batch[i] * batches[i]['weight'] for i in sorted_batches]) >= weight_required, "Weight_Requirement"
-
-    # Solve the problem
-    problem.solve()
-
-    # Extract results for batches to be sent
-    results = {}
-    for batch_id in batches:
-        send_decision = pulp.value(send_batch[batch_id])
-        results[batch_id] = {'send': send_decision, 'cost': batch_costs[batch_id], 'path': find_optimal_path(SCN, batches[batch_id]['location_id'], destination, batches[batch_id]['weight'], batches[batch_id]['volume'])}
-    return results
-
-def compute_total_cost(SCN, path, weight, volume):
-    """
-    Compute the total cost for a given path, weight, and volume.
-    """
-    if not path:
-        return float('inf')
-
-    total_cost = 0
-    for i in range(len(path) - 1):
-        edge_data = SCN.get_edge_data(path[i], path[i + 1])
-        edge_cost = compute_edge_cost(edge_data, weight, volume)
-        total_cost += edge_cost
-
-    return total_cost
-
-def find_optimal_path(SCN, from_loc, to_loc, weight, volume):
-    """
-    Find the optimal path in the SCN based on weight.
-    """
-
-    # Update edge weights in the graph based on the given weight and volume
-    for u, v in SCN.edges():
-        edge_data = SCN.get_edge_data(u, v)
-        cost = compute_edge_cost(edge_data, weight, volume)
-        SCN[u][v]['weight'] = cost
-
-    # Find the shortest path using the updated edge weights
-    try:
-        shortest_path = nx.shortest_path(SCN, source=from_loc, target=to_loc, weight='weight')
-        return shortest_path
-    except nx.NetworkXNoPath:
-        print(f"No path found from {from_loc} to {to_loc}.")
-        return None
-
-def compute_edge_cost(edge_data, weight, batch_volume):
-    """
-    Compute the cost of an edge based on weight and volume, considering the route type in edge_data.
-    """
-
-    route_type = edge_data.get('type')
-    tiers = edge_data.get('costs', {})
-
-    if route_type == 'weight':
-        return calculate_tier_cost(tiers, weight)
-    elif route_type == 'volume':
-        return calculate_tier_cost(tiers, batch_volume)
-    else:
-        return float('inf')  # Route type not found or unsupported
-
-def calculate_tier_cost(tiers, amount):
-    """
-    Calculate cost based on a given set of tiers and an amount.
-    """
-    sorted_tiers = sorted([(float(k), v) for k, v in tiers.items()], key=lambda x: x[0])
-    total_cost = 0
-    remaining_amount = amount
-
-    for tier_capacity, tier_cost in sorted_tiers:
-        if remaining_amount > 0:
-            if remaining_amount <= tier_capacity:
-                total_cost += tier_cost
-                break
-            else:
-                total_cost += tier_cost
-                remaining_amount -= tier_capacity
-
-    return total_cost
-
-
-# Mock Supply Chain Network (SCN) setup
-SCN = nx.Graph()
-
-# Add mock locations
-SCN.add_node("Location_A")
-SCN.add_node("Location_B")
-SCN.add_node("Customer_Location")
-
-# Add mock routes with tiered costs
-SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
-SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})
-
-# Mock batch data
+# Define sample batches and destinations
 batches = {
-    "Batch_1": {'location': 'Location_A', 'weight': 50, 'volume': 20, 'quantity': 10},
-    "Batch_2": {'location': 'Location_A', 'weight': 40, 'volume': 25, 'quantity': 15},
-    "Batch_3": {'location': 'Location_B', 'weight': 20, 'volume': 15, 'quantity': 5}
+    "batch1": {"location": "A", "weight": 20, "volume": 5, "species": "X"},
+    "batch2": {"location": "B", "weight": 40, "volume": 10, "species": "Y"}
 }
 
-# Mock customer requirement
-weight_required = 100
+destinations = {
+    "dest1": {"location": "C", "weight": 15, "species": "X"},
+    "dest2": {"location": "C", "weight": 25, "species": "Y"}
+}
 
-# Function calls
-results = optimize(SCN, batches, "Customer_Location", weight_required)
-print("Optimization Results:", results)
+# Create an instance of Optimize
+optimize_instance = Optimize(SCN, batches, destinations)
+
+# Print the results
+print("Optimization Results:")
+print(optimize_instance.results)
