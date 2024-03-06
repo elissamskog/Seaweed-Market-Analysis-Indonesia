@@ -1,52 +1,160 @@
-**NOTE:
 
-Database Schema in firestore:
+Database Schema
 
-    Locations Collection:
-    Document ID: Unique identifier for each location, Firebase naming conventions
-    Fields:
-    customers: Map/object, Customer object
-    address: String, the physical address of the location.
-    island: String, island name
-    type: String, the type of location (e.g., port, warehouse, farm).
+Locations Collection:
+Document ID: Unique identifier for each location, Firebase naming conventions
+Fields:
+customers: Map/object, Customer object
+address: String, the physical address of the location.
+island: String, island name
+type: String, the type of location (e.g., port, warehouse, farm).
 
-    Routes Collection:
-    Document ID: Unique identifier for each route
-    Fields:
-    from: String, the starting location's location_id.
-    to: String, the destination location's location_id.
-    type: String, indicates if the route is based on volume (m3) or weight (metric tonnes).
-    costs: Map/Object, containing costs for different tiers (e.g., {"32": 230, "67": 250}).
+Routes Collection:
+Document ID: Unique identifier for each route
+Fields:
+from: String, the starting location's location_id.
+to: String, the destination location's location_id.
+type: String, indicates if the route is based on volume (m3) or weight (metric tonnes).
+costs: Map/Object, containing costs for different tiers (e.g., {"32": 230, "67": 250}).
 
-    Customers Collection:
-    Document ID: customer_id, a unique identifier for each customer
-    Fields:
-    location_id: Map/Object, location object.
-    quantity_required: Number, the required quantity of product.
-    species: String, the species of product required.
+Sellers Collection:
+Document ID: Unique identifier for each seller
+Fields:
+location_id: String, location of the seller.
+name: String, internal name for the seller.
 
-    Batches Collection:
+    Subcollection: Batches
     Document ID: Unique identifier for each batch
     Fields:
-    location_id: Map/object, Location object
     quantity: Number, the quantity of product in the batch.
     weight: Number, the weight of the batch (m3).
     volume: Number, the volume of the batch (volume).
     species: String, the species of the product in the batch.
     cost: Number, the cost of the entire batch, which is zero if it's already owned.
+    timestamp: Timestamp, the creation or update time of the batch.
+    active: Boolean, indicating if the batch is active.
 
-    Network Collection:
-    Serialized Supply Chain Network Graph object
-    Is updated whenever a location is added.
+Customers Collection:
+Document ID: customer_id, a unique identifier for each customer
+Fields:
+location_id: String, location of the customer.
+name: String, internal name for the customer.
 
-
-    Ongoing Trades Collection: 
-    Document ID: A unique identifier for each trade permutation
+    Subcollection: Orders
     Fields:
-    path: Array of Strings. Ordered list of location_ids representing the route taken.
-    batch_assignments: Map/Object. Mapping each batch to its destination location_id.
-    cost: Number. The total cost associated with the permutation
+    quantity: Number, the required quantity of product.
+    species: String, the species of product required.
+    timestamp: Timestamp, the creation or update time of the order.
+    active: Boolean, indicating if the order is active.
+
+Network Collection:
+Serialized Supply Chain Network Graph object.
+Updated if: a new transport location is added, a new customer order is submitted, a new batch is submitted.
+
+Ongoing Trades Collection:
+Document ID: A unique identifier for each trade permutation
+Fields:
+path: Array of Strings, ordered list of location_ids representing the route taken.
+batch_assignments: Map/Object, mapping each batch to its destination location_id.
+cost: Number, the total cost associated with the permutation.
     
+
+Operational Flow
+
+Adding Location(s): Add a document/documents in the Locations collection. 
+Input Example:
+{
+{
+  "Locations": [
+    {
+      "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
+      "type": "warehouse",
+      "island": "Java"
+    }
+    // More locations...
+  ]
+}
+
+Adding Route(s): Add a document/documents in the Routes collection, specifying the start and end points using location object. 
+Input Example: 
+{
+  "Routes": [
+    {
+      "from": "Document ID for location",
+      "to": "Document ID for location",
+      "type": "weight",
+      "cost_tiers": {
+        "10": 200,
+        "20": 800,
+        "50": 1500
+      }
+    }
+    // More routes...
+  ]
+}
+
+Adding Customer(s): Add a document/documents in the Customers collection.
+Input Example:
+{
+  "Customers": [
+    {
+      "location_id": "Document ID for location",
+      "name": "Internal Customer Name"
+    }
+    // More customers...
+  ]
+}
+
+Adding an Order: Adds an order in the subcollection under customer
+Input Example:
+{
+  "Orders": [
+    {
+      "location_id": "Document ID for location"
+      "quantity": 100,
+      "species": "alg",
+      "timestamp": "2023-03-06T12:00:00Z",
+      "active": true
+    }
+    // More orders...
+  ]
+}
+
+Adding a Seller: Add a document in the Sellers collection.
+Input Example:
+{
+  "Sellers": [
+    {
+      "location_id": "Document ID for location",
+      "name": "Internal Seller Name"
+    }
+    // More sellers...
+  ]
+}
+
+Adding a Batch
+
+Input Example:
+{
+  "Batches": [
+    {
+      "location_id": "Document ID for location"
+      "quantity": 500,
+      "weight": 100,
+      "volume": 100,
+      "species": "alg",
+      "cost": 100,
+      "timestamp": "2023-03-06T12:00:00Z",
+      "active": true
+    }
+    // More batches...
+  ]
+}
+
+
+Back-End Logic
+
+Supply Chain Management: The system uses the network graph to optimize routes and manage supply chain logistics based on the current state of batches, customer orders, and available routes.
 
 Network Graph (Supply Chain Network)
 This is a simplified Network of our supply_chain which only looks at unique location id's (type.city.island id's)
@@ -57,105 +165,3 @@ If this data is unavailable, googlemaps calculates the cost, e.g. {type: volume,
 Logic for Handling Shared Locations
 When adding a new location, read the serialized NetworkX object from db, update the graph based on the new location.
 Filling the demand of a customer, reads the serialized NetworkX object from db. It adds the customer to the network object and returns batches that optimize profit.
-
-Operational Flow
-Adding a Locations: Add a document/documents in the Locations collection. Input:
-{
-  "Locations": [
-    {
-      "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-      "type": "warehouse",
-      "island": "Java"
-    },
-    {
-      "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-      "type": "warehouse",
-      "island": "Java"
-    }
-  ]
-}
-
-Adding a Routes: Add a document/documents in the Routes collection, specifying the start and end points using location object. 
-Input: 
-{
-  "Routes": [
-    {
-      "from": "Document ID for location",
-      "to": "Document ID for location",
-      "type": "weight",
-      "cost_tiers": {
-        "up_to_100kg": 200,
-        "101_to_500kg": 800,
-        "501kg_and_above": 1500
-      }
-    },
-    {
-      "from": "Document ID for location",
-      "to": "Document ID for location",
-      "type": "volume",
-      "cost_tiers": {
-        "up_to_100kg": 200,
-        "101_to_500kg": 800,
-        "501kg_and_above": 1500
-      }
-    }
-  ]
-}
-
-Adding a Customers: Add a document/documents in the Customers collection. The system checks if a node with the customer's location exists in the network graph and connects the customer to this node.
-Input:
-{
-  "Customers": [
-    {
-      "Document ID for location": {
-        "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-        "type": "warehouse",
-        "island": "Java"
-      },
-      "quantity_required": 100,
-      "species": "alg"
-    },
-    {
-      "Document ID for location": {
-        "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-        "type": "warehouse",
-        "island": "Java"
-      },
-      "quantity_required": 100,
-      "species": "alg"
-    }
-  ]
-}
-
-Adding a Batches: Add a document/documents in the Batches collection, associated with a location object. 
-Input:
-{
-  "Batches": [
-    {
-      "Document ID for location": {
-        "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-        "type": "warehouse",
-        "island": "Java"
-      },
-      "quantity": 500,
-      "weight": 100,
-      "volume": 100,
-      "species": "alg",
-      "cost": 100
-    },
-    {
-      "Document ID for location": {
-        "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-        "type": "warehouse",
-        "island": "Java"
-      },
-      "quantity": 500,
-      "weight": 100,
-      "volume": 100,
-      "species": "alg",
-      "cost": 100
-    }
-  ]
-}
-
-Supply Chain Management: The system uses the network graph to optimize routes and manage supply chain logistics based on the current state of batches, customer orders, and available routes.

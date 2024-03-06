@@ -7,31 +7,12 @@ from google_distance import compute_distance
 from trading_opt import Optimize
 import json
 
-
-# Firebase Admin SDK Initialization
-cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
-firebase_admin.initialize_app(cred)
-
-# Firestore client instance
-db = firestore.client()
-
 class SupplyChain:
     def __init__(self):
+        # Firebase Admin SDK Initialization
+        cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
+        firebase_admin.initialize_app(cred)
         self.db = firestore.client()
-
-    def update_shelf_life(self):
-        batches_ref = self.db.collection('batches')
-        batches = batches_ref.stream()
-        batch = self.db.batch()
-
-        for batch_doc in batches:
-            shelf_life = batch_doc.get('shelf_life')
-            if shelf_life and shelf_life > 0:
-                new_shelf_life = shelf_life - 1
-                batch.update(batch_doc.reference, {'shelf_life': new_shelf_life})
-
-        batch.commit()
-        print("Shelf life updated for all batches in batch write")
 
     def add_location(self, location_id, address, id, type):
         # Add a new location to the Firestore database, type is either port, farm or warehouse
@@ -69,17 +50,6 @@ class SupplyChain:
         batch_ref = self.db.collection('batches').document(batch_id)
         batch_ref.set(batch_data)
         print(f"Batch {batch_id} added")
-
-    def move_batch(self, batch_id, to_location_id):
-        # Move a batch to a new location
-        batch_ref = self.db.collection('batches').document(batch_id)
-        batch_data = batch_ref.get().to_dict()
-        if batch_data:
-            batch_data['location'] = to_location_id
-            batch_ref.set(batch_data)
-            print(f"Batch {batch_id} moved to {to_location_id}")
-        else:
-            print(f"Batch {batch_id} not found")
 
     def update_route(self, from_location, to_location, new_cost_tiers):
         # Update an existing route with new cost and volume data
