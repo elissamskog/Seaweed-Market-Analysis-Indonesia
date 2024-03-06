@@ -11,10 +11,19 @@ class Optimize:
         self.results = self.optimize_transportation_costs()
 
     def optimize_transportation_costs(self):
+        # The key limitation of this optimaztion script lies in the first two constraints.
         problem = pulp.LpProblem("Minimize_Transportation_Costs", pulp.LpMinimize)
         x = pulp.LpVariable.dicts("permutation", self.permutation_costs.keys(), cat='Binary')
 
         problem += pulp.lpSum(x[perm] * self.permutation_costs[perm] for perm in self.permutation_costs)
+
+        # Constraint: Each batch is involved in at most one selected permutation
+        for batch in self.batches:
+            problem += pulp.lpSum(x[(batch_combo, dest_combo)] for batch_combo, dest_combo in self.permutation_costs.keys() if batch in batch_combo) <= 1
+
+        # Constraint: Each customer is involved in at most one selected permutation
+        for customer in self.destinations:
+            problem += pulp.lpSum(x[(batch_combo, dest_combo)] for batch_combo, dest_combo in self.permutation_costs.keys() if customer in dest_combo) <= 1
 
         # Add constraints for meeting weight requirements at each destination
         # These are not strict constraints - if not met, that customer's demand remains unfulfilled

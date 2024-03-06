@@ -316,6 +316,6 @@ class SupplyChain:
         '''This stores the trades permutations in the db'''
         return 0
     
-    def completed_trades(self, trade_id):
+    def complete_trades(self, trade_id):
         '''This removes the trade from the db, updates the batches and updates the customers db'''
         return 0
