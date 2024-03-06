@@ -4,7 +4,7 @@ from firebase_admin import firestore
 import networkx as nx
 from networkx.readwrite import json_graph
 from google_distance import compute_distance
-from trading_opt import optimize
+from trading_opt import Optimize
 import json
 
 
@@ -15,9 +15,9 @@ firebase_admin.initialize_app(cred)
 # Firestore client instance
 db = firestore.client()
 
-class SupplyChain():
+class SupplyChain:
     def __init__(self):
-        self.db = db
+        self.db = firestore.client()
 
     def update_shelf_life(self):
         batches_ref = self.db.collection('batches')
@@ -33,7 +33,7 @@ class SupplyChain():
         batch.commit()
         print("Shelf life updated for all batches in batch write")
 
-    def add_location(self, location_id, address, id, type): # Spara med bättre Document ID?
+    def add_location(self, location_id, address, id, type):
         # Add a new location to the Firestore database, type is either port, farm or warehouse
         location_ref = self.db.collection('locations').document(id)
         location_ref.set({'address': address, 'location_id': location_id, 'type': type})
@@ -104,46 +104,107 @@ class SupplyChain():
         self.connect_customer_to_network(address, location_id, customer_id)
 
     def build_network_graph(self):
-        G = nx.Graph()
+        # Initialize directed graph
+        G = nx.DiGraph()
 
-        # Fetch locations and their addresses
-        locations_ref = self.db.collection('locations')
-        locations = locations_ref.stream()
+        # Fetch data from Firestore
+        customers = self.db.collection('Customers').stream()
+        batches = self.db.collection('Batches').stream()
+        locations = list(self.db.collection('Locations').stream())  # Convert to list for multiple iterations
+        
+        # Helper function to filter transport locations
+        def is_transport_location(location):
+            return location.get('type') in ['warehouse', 'port']
+
+        # Create nodes for batches, transport locations, and customers
+        for batch in batches:
+            G.add_node(batch.id, type='batch')
+        transport_locations = {}  # Dictionary to group transport locations by island
         for location in locations:
-            location_data = location.to_dict()
-            city_island = location_data.get('location_id', '')  # city.island format
-            address = location_data.get('address', '')
+            if is_transport_location(location):
+                G.add_node(location.id, type='location', island=location.get('island'))
+                island = location.get('island')
+                transport_locations.setdefault(island, []).append(location.id)
+        for customer in customers:
+            G.add_node(customer.id, type='customer', island=customer.get('location_id'))
 
-            # Add a node for each unique city.island, using the first instance's data
-            if city_island not in G:
-                G.add_node(city_island, address=address)
+        # Create directed edges
+        # Ports to ports
+        ports = [loc.id for loc in locations if loc.get('type') == 'port']
+        for port1 in ports:
+            for port2 in ports:
+                if port1 != port2:
+                    G.add_edge(port1, port2)
 
-        # Process routes
-        routes = self.db.collection('routes').stream()
-        for route in routes:
-            route_data = route.to_dict()
-            from_loc = route_data['from']  # These should also be in city.island format
-            to_loc = route_data['to']
-            route_type = route_data.get('type', 'volume')
-            edge_data = {'type': route_type, 'costs': route_data['costs']}
-            G.add_edge(from_loc, to_loc, **edge_data)
+        # Transport locations on the same island
+        for island, locs in transport_locations.items():
+            for loc1 in locs:
+                for loc2 in locs:
+                    if loc1 != loc2:
+                        G.add_edge(loc1, loc2)
 
-        # Add intra-island transportation costs
-        for loc1 in G.nodes:
-            addr1 = G.nodes[loc1]['address']
-            for loc2 in G.nodes:
-                if loc1 != loc2 and loc1.split('.')[-1] == loc2.split('.')[-1]:
-                    addr2 = G.nodes[loc2]['address']
-                    distance = compute_distance(addr1, addr2)
-                    costs = {}
-                    for weight in [10, 30]:
-                        cost = (distance * 0.48 + 121) * weight / 10
-                        costs[f"{weight}kg"] = cost
-                    edge_data = {'type': 'weight', 'costs': costs}
-                    G.add_edge(loc1, loc2, **edge_data)
-                    G.add_edge(loc2, loc1, **edge_data)
+        # Batches to each other and to transport locations on the same island
+        for batch in batches:
+            for other_batch in batches:
+                if batch.id != other_batch.id:
+                    G.add_edge(batch.id, other_batch.id)
+            for location in locations:
+                if location.get('type') in ['warehouse', 'port'] and batch.get('island') == location.get('island'):
+                    G.add_edge(batch.id, location.id)
+
+        # Customers to each other and from transport locations
+        for customer in customers:
+            for other_customer in customers:
+                if customer.id != other_customer.id:
+                    G.add_edge(customer.id, other_customer.id)
+            for location in locations:
+                if location.get('type') in ['warehouse', 'port'] and customer.get('location_id') == location.id:
+                    G.add_edge(location.id, customer.id)
 
         self.SCN = G
+        self.build_edges()
+
+    def build_edges(self):
+        # Fetch routes from Firestore
+        routes = self.db.collection('Routes').stream()
+
+        # Process each route and update edges in the graph
+        for route in routes:
+            from_location = route.get('from')
+            to_location = route.get('to')
+
+            # Check if the edge exists in the graph
+            if self.SCN.has_edge(from_location, to_location):
+                route_type = route.get('type')
+                costs = route.get('costs')
+
+                # Update edge with route data
+                self.SCN[from_location][to_location]['type'] = route_type
+                self.SCN[from_location][to_location]['costs'] = costs
+
+            # Check if reverse route exists in the graph
+            elif self.SCN.has_edge(to_location, from_location):
+                # Use reverse route's properties for this edge
+                reverse_edge_data = G[to_location][from_location]
+                self.SCN[from_location][to_location]['type'] = reverse_edge_data['type']
+                self.SCN[from_location][to_location]['costs'] = reverse_edge_data['costs']
+
+            # If no direct or reverse route exists, calculate estimated costs
+            else:
+                # Fetch addresses of locations
+                addr1 = self.db.collection('Locations').document(from_location).get().to_dict().get('address')
+                addr2 = self.db.collection('Locations').document(to_location).get().to_dict().get('address')
+
+                # Compute distance, this logic is according to 
+                distance = compute_distance(addr1, addr2)
+                estimated_costs = {}
+                for weight in [10, 30]:
+                    cost = (distance * 0.48 + 121) * weight / 10
+                    estimated_costs[f"{weight}kg"] = cost
+
+                # Update edge with estimated costs
+                self.SCN[from_location][to_location]['type'] = 'weight'
+                self.SCN[from_location][to_location]['costs'] = estimated_costs
         
     def fill_demand(self, customer_id, weight_required):
         # Load the most current state of the SCN
@@ -250,3 +311,11 @@ class SupplyChain():
         else:
             print("No document found in the 'networks' collection.")
             self.SCN = None
+
+    def accept_trades(self):
+        '''This stores the trades permutations in the db'''
+        return 0
+    
+    def completed_trades(self, trade_id):
+        '''This removes the trade from the db, updates the batches and updates the customers db'''
+        return 0
