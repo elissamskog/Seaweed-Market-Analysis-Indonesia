@@ -176,46 +176,63 @@ class SupplyChain:
                 self.SCN[from_location][to_location]['type'] = 'weight'
                 self.SCN[from_location][to_location]['costs'] = estimated_costs
         
-    def fill_demand(self, customer_id, weight_required):
-        # Load the most current state of the SCN
-        self.read_network()
+    def fill_demand(self):
+        # Build the network
+        self.build_network_graph()
 
-        # Now the SCN is updated, connect the customer to the network
-        # Assuming the method signature of connect_customer_to_network is (self, address, location_id, customer_id)
-        # And assuming you have the customer's address and location_id available
-        # You might need to fetch these details from Firestore if not already available in the method call
-        customer_ref = self.db.collection('customers').document(customer_id)
-        customer_doc = customer_ref.get()
-        if customer_doc.exists:
-            customer_data = customer_doc.to_dict()
-            self.connect_customer_to_network(customer_data['address'], customer_data['location_id'], customer_id)
-        else:
-            print(f"No customer found with ID {customer_id}")
-            return
-
-        customer_data = customer_doc.to_dict()
-        demanded_species = customer_data.get('demand_species')
-        location_id = customer_doc.get("location_id")
-
-        # Fetch batches that match the demanded species
+        # Initialize a dictionary to hold all demanded batches
         demanded_batches = {}
-        batches_ref = self.db.collection('batches')
-        matching_batches = batches_ref.where('species', '==', demanded_species).stream()
 
-        for batch in matching_batches:
-            batch_data = batch.to_dict()
-            if batch_data['quantity'] > 0:  # Ensure the batch has available quantity
-                demanded_batches[batch.id] = {
-                    'location': batch_data['location'],
-                    'weight': batch_data['weight'],
-                    'volume': batch_data['volume'],
-                    'quantity': batch_data['quantity']
+        # Fetch all active orders from customers
+        customers_ref = self.db.collection('customers')
+        customers_docs = customers_ref.stream()
+
+        orders = {}  # To store orders indexed by customer location
+
+        for customer_doc in customers_docs:
+            customer_data = customer_doc.to_dict()
+            customer_location_id = customer_data.get("location_id")
+
+            # Fetch active orders for each customer
+            orders_ref = customer_doc.reference.collection('Orders')
+            orders_docs = orders_ref.where('active', '==', True).stream()
+
+            for order_doc in orders_docs:
+                order_data = order_doc.to_dict()
+                orders[customer_location_id] = order_data
+
+        # Fetch active batches from all sellers
+        sellers_ref = self.db.collection('sellers')
+        sellers_docs = sellers_ref.stream()
+
+        for seller_doc in sellers_docs:
+            seller_data = seller_doc.to_dict()
+            seller_location_id = seller_data.get('location_id')
+
+            # Fetch active batches for each seller
+            batches_ref = seller_doc.reference.collection('Batches')
+            batches_docs = batches_ref.where('active', '==', True).stream()
+
+            for batch_doc in batches_docs:
+                batch_data = batch_doc.to_dict()
+                batch_id = batch_doc.id
+                batch_weight = batch_data.get('weight')
+                batch_volume = batch_data.get('volume')
+
+                # Add batch data to demanded_batches
+                demanded_batches[batch_id] = {
+                    'weight': batch_weight,
+                    'volume': batch_volume,
+                    'location_id': seller_location_id,
+                    'species': batch_data.get('species')  # Add species information
                 }
 
-        # Optimize transportation costs
-        results = optimize(self.SCN, demanded_batches, location_id, weight_required)
+        # Optimize transportation costs with all available batches and orders
+        results = Optimize(self.SCN, demanded_batches, orders)
+        optimized_results = results.results
 
-        return results
+        # Process and return results
+        return optimized_results
 
     def connect_customer_to_network(self, address, location_id):
         # Logic to connect the customer location to other relevant nodes in the SCN
@@ -282,10 +299,10 @@ class SupplyChain:
             print("No document found in the 'networks' collection.")
             self.SCN = None
 
-    def accept_trades(self):
+    def accept_trades(self, trade_ids):
         '''This stores the trades permutations in the db'''
         return 0
     
-    def complete_trades(self, trade_id):
+    def complete_trades(self, trade_ids):
         '''This removes the trade from the db, updates the batches and updates the customers db'''
         return 0
