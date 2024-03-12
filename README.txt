@@ -7,7 +7,7 @@ Fields:
 customers: Map/object, Customer object
 address: String, the physical address of the location.
 island: String, island name
-type: String, the type of location (e.g., port, warehouse, farm).
+type: String, the type of location (e.g., port, warehouse, farm, customer, seller).
 
 Routes Collection:
 Document ID: Unique identifier for each route
@@ -51,12 +51,23 @@ Network Collection:
 Serialized Supply Chain Network Graph object.
 Updated if: a new transport location is added, a new customer order is submitted, a new batch is submitted.
 
-Ongoing Trades Collection:
+Ongoing Routes Collection:
 Document ID: A unique identifier for each trade permutation
 Fields:
 path: Array of Strings, ordered list of location_ids representing the route taken.
 batch_assignments: Map/Object, mapping each batch to its destination location_id.
 cost: Number, the total cost associated with the permutation.
+
+Internal Sink Collection:
+Document ID:
+Fields:
+Location ID: the id of the location document
+name: Internal name for the place
+
+Subcollection: Sink
+    Fields:
+    quantity: Number, the required quantity of product.
+    species: String, the species of product required.
     
 
 Operational Flow
@@ -133,7 +144,6 @@ Input Example:
 }
 
 Adding a Batch
-
 Input Example:
 {
   "Batches": [
@@ -157,7 +167,7 @@ Back-End Logic
 Supply Chain Management: The system uses the network graph to optimize routes and manage supply chain logistics based on the current state of batches, customer orders, and available routes.
 
 Network Graph (Supply Chain Network)
-This is a simplified Network of our supply_chain which only looks at unique location id's (type.city.island id's)
+This is a simplified Network of our supply_chain
 
 Nodes: Represent locations. 
 Edges: Represent routes between locations. Edges are created based on the from and to fields in the Routes collection, with costs and other details from the route's data. 
