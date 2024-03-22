@@ -4,7 +4,6 @@ Database Schema
 Locations Collection:
 Document ID: Unique identifier for each location, Firebase naming conventions
 Fields:
-customers: Map/object, Customer object
 address: String, the physical address of the location.
 island: String, island name
 type: String, the type of location (e.g., port, warehouse, farm, customer, seller).
@@ -29,7 +28,7 @@ name: String, internal name for the seller.
     quantity: Number, the quantity of product in the batch.
     weight: Number, the weight of the batch (m3).
     volume: Number, the volume of the batch (volume).
-    species: String, the species of the product in the batch.
+    type: String, the type of the product in the batch.
     cost: Number, the cost of the entire batch, which is zero if it's already owned.
     timestamp: Timestamp, the creation or update time of the batch.
     active: Boolean, indicating if the batch is active.
@@ -43,13 +42,9 @@ name: String, internal name for the customer.
     Subcollection: Orders
     Fields:
     quantity: Number, the required quantity of product.
-    species: String, the species of product required.
+    type: String, the type of product required.
     timestamp: Timestamp, the creation or update time of the order.
     active: Boolean, indicating if the order is active.
-
-Network Collection:
-Serialized Supply Chain Network Graph object.
-Updated if: a new transport location is added, a new customer order is submitted, a new batch is submitted.
 
 Ongoing Routes Collection:
 Document ID: A unique identifier for each trade permutation
@@ -61,13 +56,13 @@ cost: Number, the total cost associated with the permutation.
 Internal Sink Collection:
 Document ID:
 Fields:
-Location ID: the id of the location document
+location_id: the id of the location document
 name: Internal name for the place
 
 Subcollection: Sink
     Fields:
     quantity: Number, the required quantity of product.
-    species: String, the species of product required.
+    type: String, the type of product required.
     
 
 Operational Flow
