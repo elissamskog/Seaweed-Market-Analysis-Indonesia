@@ -70,33 +70,40 @@ class SupplyChain:
         customer_ref.set(customer_data)
         print(f"Customer {customer_id} added with quantity required: {quantity_required} and address: {address}")
 
-        # Connect the customer to the networkX object
-        self.connect_customer_to_network(address, location_id, customer_id)
-
-    def build_network_graph(self):
+    def build_network_graph(self, destinations):
         # Initialize directed graph
         G = nx.DiGraph()
 
-        # Fetch data from Firestore
-        customers = self.db.collection('Customers').stream()
-        batches = self.db.collection('Batches').stream()
+        # Fetch all locations and filter for transport locations
         locations = list(self.db.collection('Locations').stream())  # Convert to list for multiple iterations
-        
-        # Helper function to filter transport locations
         def is_transport_location(location):
-            return location.get('type') in ['warehouse', 'port']
+            return location.get('type') not in ['customer', 'seller', 'farm']
 
-        # Create nodes for batches, transport locations, and customers
-        for batch in batches:
-            G.add_node(batch.id, type='batch')
-        transport_locations = {}  # Dictionary to group transport locations by island
+        transport_locations = {}
         for location in locations:
             if is_transport_location(location):
-                G.add_node(location.id, type='location', island=location.get('island'))
+                location_id = location.id
+                G.add_node(location_id, type=location.get('type'), island=location.get('island'))
                 island = location.get('island')
-                transport_locations.setdefault(island, []).append(location.id)
-        for customer in customers:
-            G.add_node(customer.id, type='customer', island=customer.get('location_id'))
+                transport_locations.setdefault(island, []).append(location_id)
+
+        # Add customer and sink nodes from destinations
+        for destination_id in destinations:
+            destination_doc = self.db.collection('Locations').document(destination_id).get()
+            destination_data = destination_doc.to_dict()
+            destination_type = destination_data.get('type')
+
+            if destination_type == 'customer':
+                # Add customer node
+                G.add_node(destination_id, type='sink', island=destination_data.get('island'))
+            else:
+                # Add sink node
+                G.add_node(destination_id, type='sink', island=destination_data.get('island'))
+
+        # Fetch and add batches as nodes
+        batches = self.db.collection('Batches').stream()
+        for batch in batches:
+            G.add_node(batch.id, type='batch')
 
         # Create directed edges
         # Ports to ports
@@ -176,30 +183,48 @@ class SupplyChain:
                 self.SCN[from_location][to_location]['type'] = 'weight'
                 self.SCN[from_location][to_location]['costs'] = estimated_costs
         
-    def fill_demand(self):
+    def min_transport_cost(self, destinations):
+        '''destinations contains the id of the location document'''
+
         # Build the network
-        self.build_network_graph()
+        self.build_network_graph(destinations)
 
-        # Initialize a dictionary to hold all demanded batches
-        demanded_batches = {}
+        # Initialize a dictionary to hold all demanded batches and orders
+        batches = {}
+        orders = {}  # To store orders indexed by customer location, only including species and quantity
 
-        # Fetch all active orders from customers
-        customers_ref = self.db.collection('customers')
-        customers_docs = customers_ref.stream()
+        for destination_id in destinations:
+            location_doc = self.db.collection('locations').document(destination_id).get()
+            location_data = location_doc.to_dict()
+            location_type = location_data.get('type')
 
-        orders = {}  # To store orders indexed by customer location
+            if location_type == 'customer':
+                # Fetch active orders for this customer
+                orders_ref = self.db.collection('customers').document(destination_id).collection('Orders')
+                orders_docs = orders_ref.where('active', '==', True).stream()
 
-        for customer_doc in customers_docs:
-            customer_data = customer_doc.to_dict()
-            customer_location_id = customer_data.get("location_id")
+                for order_doc in orders_docs:
+                    order_data = order_doc.to_dict()
+                    # Extract only species and quantity
+                    orders[destination_id] = {
+                        'species': order_data.get('species'),
+                        'quantity': order_data.get('quantity'),
+                        'location': destination_id
+                    }
 
-            # Fetch active orders for each customer
-            orders_ref = customer_doc.reference.collection('Orders')
-            orders_docs = orders_ref.where('active', '==', True).stream()
+            else:
+                # Fetch sink value for non-customer locations
+                sink_ref = self.db.collection('Internal Sink Collection').document(destination_id).collection('Sink Values')
+                sink_docs = sink_ref.stream()
 
-            for order_doc in orders_docs:
-                order_data = order_doc.to_dict()
-                orders[customer_location_id] = order_data
+                for sink_doc in sink_docs:
+                    sink_data = sink_doc.to_dict()
+                    # Extract only species and quantity
+                    orders[destination_id] = {
+                        'species': sink_data.get('species'),
+                        'quantity': sink_data.get('quantity'),
+                        'location': destination_id
+                    }
 
         # Fetch active batches from all sellers
         sellers_ref = self.db.collection('sellers')
@@ -219,45 +244,20 @@ class SupplyChain:
                 batch_weight = batch_data.get('weight')
                 batch_volume = batch_data.get('volume')
 
-                # Add batch data to demanded_batches
-                demanded_batches[batch_id] = {
+                # Add batch data to batches
+                batches[batch_id] = {
                     'weight': batch_weight,
                     'volume': batch_volume,
-                    'location_id': seller_location_id,
+                    'location': seller_location_id,
                     'species': batch_data.get('species')  # Add species information
                 }
 
         # Optimize transportation costs with all available batches and orders
-        results = Optimize(self.SCN, demanded_batches, orders)
+        results = Optimize(self.SCN, batches, orders)
         optimized_results = results.results
 
         # Process and return results
         return optimized_results
-
-    def connect_customer_to_network(self, address, location_id):
-        # Logic to connect the customer location to other relevant nodes in the SCN
-
-        existing_node = None
-        for node in self.SCN.nodes:
-            if node == location_id.endswith(node):
-                existing_node = node
-                break
-
-        # If an existing node is found, use it; otherwise, add a new node for the customer
-        if existing_node:
-            customer_node = existing_node
-        else:
-            customer_node = location_id
-            self.SCN.add_node(location_id)
-            # Connect the customer node to other nodes on the same island
-            for location in self.SCN.nodes:
-                if location != customer_node and location.split('.')[-1] == location_id.split('.')[-1]:
-                    # Calculate transportation cost between locations
-                    location_data = self.SCN.nodes[location]
-                    location_address = location_data.get('address')
-                    cost = self.compute_cost(address, location_address) # Change to tiers!!
-                    self.SCN.add_edge(customer_node, location, weight=cost)
-                    self.SCN.add_edge(location, customer_node, weight=cost)
 
     def store_network(self):
         # Reference to the 'networks' collection
