@@ -14,62 +14,6 @@ class SupplyChain:
         firebase_admin.initialize_app(cred)
         self.db = firestore.client()
 
-    def add_location(self, location_id, address, id, type):
-        # Add a new location to the Firestore database, type is either port, farm or warehouse
-        location_ref = self.db.collection('locations').document(id)
-        location_ref.set({'address': address, 'location_id': location_id, 'type': type})
-        print(f"Location {location_id} added with address: {address}")
-
-         # Rebuild the SCN object with the new location included
-        self.build_network_graph()
-
-        # Store the updated SCN object in Firestore
-        self.store_network()
-
-    def add_route(self, from_location, to_location, quantity_tiers, type):
-        # Add a new route to the Firestore database, quantity_tiers is a dictionary with tiers of cost for each quantity tier
-        # type is the type of quantity tier being used, either volume or weight
-        route_id = f"{from_location}-{to_location}"
-        route_doc = {
-            'from': from_location,
-            'to': to_location,
-            'type': type,
-            'cost': quantity_tiers
-        }
-        self.db.collection('routes').document(route_id).set(route_doc)
-        print(f"Route from {from_location} to {to_location} added")
-
-        # Rebuild the SCN object with the new route included
-        self.build_network_graph()
-
-        # Store the updated SCN object in Firestore
-        self.store_network()
-
-    def add_batch(self, batch_id, batch_data):
-        # Add a new batch to the 'batches' collection
-        batch_ref = self.db.collection('batches').document(batch_id)
-        batch_ref.set(batch_data)
-        print(f"Batch {batch_id} added")
-
-    def update_route(self, from_location, to_location, new_cost_tiers):
-        # Update an existing route with new cost and volume data
-        route_id = f"{from_location}-{to_location}"
-        route_ref = self.db.collection('routes').document(route_id)
-        route_ref.update({'cost': new_cost_tiers})
-        print(f"Route from {from_location} to {to_location} updated")
-
-    def add_customer(self, customer_id, quantity_required, address, species, location_id):
-        # Add a new customer to the Firestore database with the required details
-        customer_data = {
-            'quantity_required': quantity_required,
-            'address': address,
-            'location_id': location_id,
-            'species': species
-        }
-        customer_ref = self.db.collection('customers').document(customer_id)
-        customer_ref.set(customer_data)
-        print(f"Customer {customer_id} added with quantity required: {quantity_required} and address: {address}")
-
     def build_network_graph(self, destinations):
         # Initialize directed graph
         G = nx.DiGraph()
@@ -298,11 +242,3 @@ class SupplyChain:
         else:
             print("No document found in the 'networks' collection.")
             self.SCN = None
-
-    def accept_trades(self, trade_ids):
-        '''This stores the trades permutations in the db'''
-        return 0
-    
-    def complete_trades(self, trade_ids):
-        '''This removes the trade from the db, updates the batches and updates the customers db'''
-        return 0
