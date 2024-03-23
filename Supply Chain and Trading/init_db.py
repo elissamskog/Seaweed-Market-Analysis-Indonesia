@@ -2,6 +2,7 @@ import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
 import pandas as pd
+from datetime import datetime
 
 
 # Firebase Admin SDK Initialization
@@ -12,122 +13,359 @@ firebase_admin.initialize_app(cred)
 # Firestore client instance
 db = firestore.client()
 
-'''# Function to set up the initial database structure
-def setup_database(locations):
-    for location_id, address in locations.items():
-        location_ref = db.collection('locations').document(location_id)
-        # Set the address for the location document
-        location_ref.set({'address': address}) 
-        # Initialize the 'batches' sub-collection with a placeholder if needed
-        # location_ref.collection('batches').document('placeholder').set({})'''
-
 ###Functions to upload data###
 
 #Function to upload locations
-def upload_locations(locations):
-    counter = 1
-    for location_id, address in locations.items():
-        # Generate a unique identifier in the format "location_001"
-        unique_id = f"location_{counter:03}"
-
-        # Extract the type from location_id or another logic if applicable
-        # Assuming the type is the first part of the location_id before the first '.'
-        location_type = location_id.split('.')[0] if '.' in location_id else "unknown"
-       
-        # Prepare the document data
-        doc_data = {
-            'address': address,
-            'location_id': location_id,  # Optional, if you still want to keep track of the original location ID
-            'type': location_type,  # Add the type to the document
-        }
+def upload_locations(locations_data):
+    for location in locations_data["Locations"]:
         try:
-            # Use unique_id as the document ID
-            db.collection('locations').document(unique_id).set(doc_data)
-            print(f"Added document with unique identifier {unique_id} and type {location_type}")
+            # Add each location to the 'Locations' collection
+            doc_ref = db.collection('Locations').add({
+                'address': location['address'],
+                'type': location['type'],
+                'island': location['island'],
+            })
+            print(f"Location added with ID: {doc_ref[1].id}")
         except Exception as e:
-            print(f"Failed to add document with unique identifier {unique_id}: {e}")
-
-        counter += 1  # Increment the counter for the next unique identifier
-
-
-'''def upload_routes(shipping_info):
-    for route, volumes in shipping_info.items():
-        # Split the route string into 'from' and 'to' locations
-        from_location, to_location = route.split('-')
-        # Create a document for each route
-        route_doc = {
-            'from': from_location,
-            'to': to_location,
-            'volumes': volumes
-        }
-        # Add the document to Firestore
-        db.collection('routes').document(route).set(route_doc)'''
+            print(f"Failed to add location: {e}")
 
 #Function to upload routes
-def upload_routes(shipping_info):
-    counter = 1  # Counter for unique route identifiers/ måste hitta ett nytt sätt att göra unique identifiers senare
-
-    for route, volumes in shipping_info.items():
-        # Generate a unique identifier for the route
-        unique_route_id = f"route_{counter:03}"
-
-        # Split the route string into 'from' and 'to' locations, removing type part
-        from_location, to_location = route.split('-')
-        from_location_cleaned = '.'.join(from_location.split('.')[1:])
-        to_location_cleaned = '.'.join(to_location.split('.')[1:])
-
-        # Determine the type (assuming volume if 'm3' is present)
-        route_type = 'volume' if any('m3' in key for key in volumes.keys()) else 'weight'
-
-        # Prepare the route document
-        route_doc = {
-            'from': from_location_cleaned,
-            'to': to_location_cleaned,
-            'type': route_type,
-            'costs': volumes
-        }
+def upload_routes(routes_data):
+    # Assuming routes_data is a dictionary with a "Routes" key holding a list of routes
+    for route in routes_data["Routes"]:
         try:
-            # Use unique_route_id as the document ID
-            db.collection('routes').document(unique_route_id).set(route_doc)
-            print(f"Added route document with ID {unique_route_id}")
+            # Add each route to the 'Routes' collection
+            # Firestore will automatically generate a unique document ID
+            doc_ref = db.collection('Routes').add({
+                'from': route['from'],
+                'to': route['to'],
+                'type': route['type'],
+                'costs': route['costs']
+            })
+            print(f"Route added with ID: {doc_ref[1].id}")
         except Exception as e:
-            print(f"Failed to add route document {unique_route_id}: {e}")
-
-        counter += 1  # Increment for the next route
+            print(f"Failed to add route: {e}")
 
 #Function to upload customer information
-def upload_customer_info(customer_info):
-     for customer_id, info in customer_info.items():
+def upload_customers(customers_data):
+    # Assuming customers_data is a dictionary with a "Customers" key holding a list of customer dicts
+    for customer in customers_data["Customers"]:
         try:
-            # Use customer_id as the document ID and set the fields for the customer
-            db.collection('customers').document(customer_id).set({
-                'address': info['address'],
-                'location_id': info['location_id'],
-                'quantity_required': info['quantity_required'],
-                'species': info['species']
+            # Add each customer to the 'Customers' collection
+            # Firestore will automatically generate a unique document ID for each customer
+            doc_ref = db.collection('Customers').add({
+                'location_id': customer['location_id'],
+                'name': customer['name']
             })
-            print(f"Added customer document with ID {customer_id}")
+            print(f"Customer added with ID: {doc_ref[1].id}")
         except Exception as e:
-            print(f"Failed to add customer document {customer_id}: {e}")
+            print(f"Failed to add customer: {e}")
+
+
+#Functino to upload order infromation
+def upload_orders(orders_data):
+    for order in orders_data["Orders"]:
+        customer_id = order["customer_id"]
+        # Directly parse the ISO format string to a datetime object, assuming the 'Z' timezone designator is present
+        datetime_obj = datetime.fromisoformat(order["timestamp"].rstrip("Z"))
+        
+        order_data = {
+            "location_id": order["location_id"],
+            "quantity": order["quantity"],
+            "species": order["species"],
+            "timestamp": datetime_obj,  # Use the datetime object directly
+            "active": order["active"]
+        }
+        try:
+            # Add each order to the 'Orders' subcollection under the specific customer
+            doc_ref = db.collection('Customers').document(customer_id).collection('Orders').add(order_data)
+            print(f"Order added to customer {customer_id} with ID: {doc_ref[1].id}")
+        except Exception as e:
+            print(f"Failed to add order for customer {customer_id}: {e}")
+
+
+#Function to upload seller information
+def upload_sellers(sellers_data):
+    for seller in sellers_data["Sellers"]:
+        try:
+            # Add each seller to the 'Sellers' collection
+            doc_ref = db.collection('Sellers').add({
+                'location_id': seller['location_id'],
+                'name': seller['name']
+            })
+            print(f"Seller added with ID: {doc_ref[1].id}")
+        except Exception as e:
+            print(f"Failed to add seller: {e}")
+
 
 #Function to upload batch information
-def upload_batch_info(batch_info):
-    for batch_id, info in batch_info.items():
+def upload_batches(batches_data):
+    for batch in batches_data["Batches"]:
+        seller_id = batch["seller_id"]
+        # Convert ISO format string to datetime, assuming 'Z' for UTC
+        timestamp = datetime.fromisoformat(batch["timestamp"].rstrip("Z"))
+        
+        batch_data = {
+            "location_id": batch["location_id"],
+            "quantity": batch["quantity"],
+            "weight": batch["weight"],
+            "volume": batch["volume"],
+            "species": batch["species"],
+            "cost": batch["cost"],
+            "timestamp": timestamp,  # Firestore handles datetime conversion
+            "active": batch["active"]
+        }
         try:
-            # Use batch_id as the document ID and set the fields for the batch
-            db.collection('batches').document(batch_id).set({
-                'location_id': info['location_id'],
-                'quantity': info['quantity'],
-                'weight': info['weight'],
-                'volume': info['volume'],
-                'species': info['species']
-            })
-            print(f"Added batch document with ID {batch_id}")
+            # Add the batch to the 'Batches' subcollection under the specific seller
+            doc_ref = db.collection('Sellers').document(seller_id).collection('Batches').add(batch_data)
+            print(f"Batch added under seller {seller_id} with ID: {doc_ref[1].id}")
         except Exception as e:
-            print(f"Failed to add batch document {batch_id}: {e}")
+            print(f"Failed to add batch for seller {seller_id}: {e}")
+
 
 ### Test Data ###
-# Define your locations
+            
+#Define your locations
+locations = {
+  "Locations": [
+    {
+      "address": "Coaster, Tj. Mas, Kec. Semarang Utara, Kota Semarang, Jawa Tengah 50174",
+      "type": "port",
+      "island": "Java",
+      
+    },
+    {
+      "address": "Jl. Semboja, Petengan Selatan, Bintoro, Kec. Demak, Kabupaten Demak, Jawa Tengah 59511",
+      "type": "warehouse",
+      "island": "Java",
+      
+    },
+    {
+      "address": "North Perak, Pabean Cantikan, Kota Surabaya, Jawa Timur 60165",
+      "type": "port",
+      "island": "Java",
+      
+    },
+    {
+      "address": "Jl. RE Martadinata, Tanjung, Kec. Rasanae Bar., Kab. Bima, Nusa Tenggara Barat",
+      "type": "port",
+      "island": "Nusa Tenggara Barat",
+      
+    },
+    {
+      "address": "Jl. Moh. Hatta No.32, Tamalabba, Kec. Ujung Tanah, Kota Makassar, Sulawesi Selatan 90163",
+      "type": "port",
+      "island": "Sulawesi",
+      
+    },
+    {
+      "address": "Jl. Labu Punti, Karang Dima, Labuhan Badas, Kabupaten Sumbawa, Nusa Tenggara Bar. 84316",
+      "type": "port",
+      "island": "Nusa Tenggara Barat",
+      
+    },
+    {
+      "address": "Bungkutoko, Abeli, Kendari City, South East Sulawesi; Sulawesi Tenggara",
+      "type": "port",
+      "island": "Sulawesi",
+      
+    },
+    {
+      "address": "Jl. Yos Sudarso No.16, Kel Wainitu, Kec. Nusaniwe, Kota Ambon, Maluku; Port Ambon",
+      "type": "port",
+      "island": "Maluku",
+      
+    },
+    {
+      "address": "Air Kelik, Damar, East Belitung Regency, Bangka Belitung Islands 33571;",
+      "type": "port",
+      "island": "Bangka Belitung",
+      
+    },
+    {
+      "address": "43WP+3GC, Jl. Perintis Kemerdekaan, Sawah, Kaligangsa Wetan, Kec. Brebes, Kabupaten Brebes, Jawa Tengah 52217",
+      "type": "farm",
+      "island": "Java",
+      
+    },
+    {
+      "address": "Jl. Raya Narogong No.79, RT.005/RW.002, Bojong Rawalumbu, Kec. Rawalumbu, Kota Bks, Jawa Barat 17116",
+      "type": "farm",
+      "island": "Java",
+      
+    },
+    {
+      "address": "Kecamatan Candi, Sidoarjo, Jawa Timur, Indonesia; Sidoarjo",
+      "type": "farm",
+      "island": "Java",
+      
+    },
+    {
+      "address": "2857+XJH, Gadingharjo, Donotirto, Kretek, Bantul Regency, Special Region of Yogyakarta 55772; Yogyakarta port",
+      "type": "farm",
+      "island": "Java",
+      
+    },
+    {
+      "address": ";CMP6+5HG, Labuan Kuris, Lape, Sumbawa Regency, West Nusa Tenggara",
+      "type": "farm",
+      "island": "Nusa Tenggara Barat",
+      
+    },
+    {
+      "address": "Dusun Bukit Tinggi Rt.003/ Rw.002, Desa, Pidang, Kec. Tarano, Kabupaten Sumbawa, Nusa Tenggara Bar",
+      "type": "farm",
+      "island": "Nusa Tenggara Barat",
+      
+    },
+  ]
+}
+
+#Define Shipping information
+shipping_info = { #from och to vill vara locations IDs // ändra så att den tar in adress men sparas som location_id?
+  "Routes": [
+    {
+      "from_name": "Jl. RE Martadinata, Tanjung, Kec. Rasanae Bar., Kab. Bima, Nusa Tenggara Barat", 
+      "to_name": "Coaster, Tj. Mas, Kec. Semarang Utara, Kota Semarang, Jawa Tengah 50174",
+      "type": "volume",
+      "costs": {
+        "32.6": 1242,
+        "67": 1538
+      }
+    },
+    {
+      "from": "port.mksr.slwsi",
+      "to": "port.srbya.java",
+      "type": "volume",
+      "costs": {
+        "32.6": 710,
+        "67": 1420
+      }
+    },
+    {
+      "from": "port.srbya.java",
+      "to": "port.slwsi_east.slwsi",
+      "type": "volume",
+      "costs": {
+        "32.6": 1301,
+        "67": 2958
+      }
+    }
+  ]
+}
+
+#Define Customer information
+customer_info = { #fixa location id
+  "Customers": [
+    {
+      "location_id": "0BlWKNv1YBCtguPRt2oa",
+      "name": "Alpha Corp"
+    },
+    {
+      "location_id": "0QlmnbjcUNTvlz0qF5Nk",
+      "name": "Beta Industries"
+    },
+    {
+      "location_id": "BQRGrQLaRUENgb4aegu1",
+      "name": "Gamma Logistics"
+    },
+    {
+      "location_id": "BlfTlFQbRtIIca7aaQB8",
+      "name": "Delta Trading"
+    },
+    {
+      "location_id": "EDutDGSvlUTLOau78ARe",
+      "name": "Epsilon Manufacturing"
+    }
+    # Add more customers as needed
+  ]
+}
+
+#Define Order information
+order_info = {
+  "Orders": [
+    {
+      "customer_id": "GlZ1wUCzEqjFKTvwHpAE",
+      "location_id": "5lvCO6a9Y6DUa9bjObyW",
+      "quantity": 100,
+      "species": "algae",
+      "timestamp": "2023-03-06T12:00:00Z",
+      "active": True
+    },
+    {
+      "customer_id": "NCnlpGAKh4pUv9S2BaW9",
+      "location_id": "7GrmjEBUBeXZ7bPlCIS0",
+      "quantity": 200,
+      "species": "coral",
+      "timestamp": "2023-04-15T09:30:00Z",
+      "active": True
+    }
+    #Add more orders as needed
+  ]
+}
+
+#Define Seller information
+seller_info = {
+  "Sellers": [
+    {
+      "location_id": "0BlWKNv1YBCtguPRt2oa",
+      "name": "Sunrise Supplies"
+    },
+    {
+      "location_id": "0QlmnbjcUNTvlz0qF5Nk",
+      "name": "Oceanic Products"
+    },
+    {
+      "location_id": "BQRGrQLaRUENgb4aegu1",
+      "name": "Mountain View Resources"
+    }
+    #Add more sellers as needed
+  ]
+}
+
+#Define Batch information
+batch_info = {
+  "Batches": [
+    {
+      "seller_id": "btBOkDEjmv8tKGPIqiQe",
+      "location_id": "5lvCO6a9Y6DUa9bjObyW",
+      "quantity": 500,
+      "weight": 100,
+      "volume": 100,
+      "species": "algae",
+      "cost": 100,
+      "timestamp": "2023-03-06T12:00:00Z",
+      "active": True
+    },
+    {
+      "seller_id": "qU9uX2qNTgXil43VEgt5",
+      "location_id": "7GrmjEBUBeXZ7bPlCIS0",
+      "quantity": 300,
+      "weight": 75,
+      "volume": 80,
+      "species": "coral",
+      "cost": 150,
+      "timestamp": "2023-04-15T09:30:00Z",
+      "active": False
+    }
+    #Add more batches as needed
+  ]
+}
+
+
+
+
+# Call the setup function to initialize the database
+#upload_locations(locations)
+#upload_routes(shipping_info)
+#upload_customers(customer_info)
+#upload_orders(order_info)
+#upload_sellers(seller_info)
+upload_batches(batch_info)
+
+
+###antecknignar###
+'''
 locations = {
             "port.smg.java": "Coaster, Tj. Mas, Kec. Semarang Utara, Kota Semarang, Jawa Tengah 50174",
             "wareh.smg.java": "Jl. Semboja, Petengan Selatan, Bintoro, Kec. Demak, Kabupaten Demak, Jawa Tengah 59511",
@@ -149,85 +387,13 @@ locations = {
             "farm.grc_ulva.bima.smbwa": ";Jl. Lintas Sape - Wera, Lamere, Kec. Sape, Kabupaten Bima, Nusa Tenggara Bar. 84182; Bima Regency",
             "farm.grc_ulva_ctni.mksr.slwsi": "Dusun Sampulungan Caddi, Desa Sampulungan, Kec. Galesong Utara, Kabupaten Takalar, Sulawesi Selatan 92255"
         }
+'''
 
-#Define Shipping information
+
+'''
 shipping_info = {
     "port.bima.java-port.smg.java": {"32.6m3": 1242, "67m3": 1538},
     "port.mksr.slwsi-port.srbya.java": {"32.6m3": 710, "67m3": 1420},
     "port.srbya.java-port.slwsi_east.slwsi": {"32.6m3": 1301, "67m3": 2958}
 }
-
-#Define Customer information
-customer_info = {
-    "customer_001": {
-        "address": "Jl. Semboja, Petengan Selatan, Bintoro, Kec. Demak, Kabupaten Demak, Jawa Tengah 59511",
-        "location_id": "wareh.smg.java",
-        "quantity_required": 500,
-        "species": "Alg"
-    },
-    "customer_002": {
-        "address": "Dusun Bukit Tinggi Rt.003/ Rw.002, Desa, Pidang, Kec. Tarano, Kabupaten Sumbawa, Nusa Tenggara Bar",
-        "location_id": "farm.ctni.smbwa.smbwa",
-        "quantity_required": 300,
-        "species": "Älg"
-    },
-    "customer_003": {
-        "address": ";Jl. Lintas Sape - Wera, Lamere, Kec. Sape, Kabupaten Bima, Nusa Tenggara Bar. 84182; Bima Regency",
-        "location_id": "farm.grc_ulva.bima.smbwa",
-        "quantity_required": 250,
-        "species": "Elg"
-    },
-    "customer_004": {
-        "address": "Bungkutoko, Abeli, Kendari City, South East Sulawesi; Sulawesi Tenggara",
-        "location_id": "port.slwsi_east.slwsi",
-        "quantity_required": 150,
-        "species": "Aulg"
-    }
-}
-
-batch_info = {"batch_001" : {
-    "location_id": "wareh.smg.java",
-     "quantity": 500,
-     "weight": 100,
-     "volume": 100,
-     "species": "Alg"
-     },
-     "batch_002" : {
-    "location_id": "farm.grc_ulva.bima.smbwa",
-     "quantity": 500,
-     "weight": 100,
-     "volume": 100,
-     "species": "Alg"
-     },
-     "batch_003" : {
-    "location_id": "port.slwsi_east.slwsi",
-     "quantity": 500,
-     "weight": 100,
-     "volume": 100,
-     "species": "Alg"
-     },
-     "batch_004" : {
-    "location_id": "farm.ctni.smbwa.smbwa",
-     "quantity": 500,
-     "weight": 100,
-     "volume": 100,
-     "species": "Alg"
-     },
-}
-
-
-
-
-#Function to setup entire database  
-def setup_database():
-    upload_locations(locations)
-    upload_routes(shipping_info)
-    upload_customer_info(customer_info)
-    upload_batch_info(batch_info)
-
-
-# Call the setup function to initialize the database
-setup_database()
-#setup_locations(locations)
-#upload_weather_data(weather_data)
-#upload_routes(shipping_info)
+'''
