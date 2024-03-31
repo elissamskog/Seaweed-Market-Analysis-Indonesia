@@ -65,98 +65,6 @@ Subcollection: Sink
     type: String, the type of product required.
     
 
-Operational Flow
-
-Adding Location(s): Add a document/documents in the Locations collection. 
-Input Example:
-{
-{
-  "Locations": [
-    {
-      "address": "Warehouse Road 123, 112 45 Stockholm, Sweden",
-      "type": "warehouse",
-      "island": "Java"
-    }
-    // More locations...
-  ]
-}
-
-Adding Route(s): Add a document/documents in the Routes collection, specifying the start and end points using location object. 
-Input Example: 
-{
-  "Routes": [
-    {
-      "from": "Document ID for location",
-      "to": "Document ID for location",
-      "type": "weight",
-      "cost_tiers": {
-        "10": 200,
-        "20": 800,
-        "50": 1500
-      }
-    }
-    // More routes...
-  ]
-}
-
-Adding Customer(s): Add a document/documents in the Customers collection.
-Input Example:
-{
-  "Customers": [
-    {
-      "location_id": "Document ID for location",
-      "name": "Internal Customer Name"
-    }
-    // More customers...
-  ]
-}
-
-Adding an Order: Adds an order in the subcollection under customer
-Input Example:
-{
-  "Orders": [
-    {
-      "location_id": "Document ID for location"
-      "quantity": 100,
-      "species": "alg",
-      "timestamp": "2023-03-06T12:00:00Z",
-      "active": true
-    }
-    // More orders...
-  ]
-}
-
-Adding a Seller: Add a document in the Sellers collection.
-Input Example:
-{
-  "Sellers": [
-    {
-      "location_id": "Document ID for location",
-      "name": "Internal Seller Name"
-    }
-    // More sellers...
-  ]
-}
-
-Adding a Batch
-Input Example:
-{
-  "Batches": [
-    {
-      "location_id": "Document ID for location"
-      "quantity": 500,
-      "weight": 100,
-      "volume": 100,
-      "species": "alg",
-      "cost": 100,
-      "timestamp": "2023-03-06T12:00:00Z",
-      "active": true
-    }
-    // More batches...
-  ]
-}
-
-
 Back-End Logic
 
 Supply Chain Management: The system uses the network graph to optimize routes and manage supply chain logistics based on the current state of batches, customer orders, and available routes.
@@ -170,3 +78,9 @@ If this data is unavailable, googlemaps calculates the cost, e.g. {type: volume,
 Logic for Handling Shared Locations
 When adding a new location, read the serialized NetworkX object from db, update the graph based on the new location.
 Filling the demand of a customer, reads the serialized NetworkX object from db. It adds the customer to the network object and returns batches that optimize profit.
+
+
+Satellite Logic:
+
+1. Create a subscription and confirm it. Confirmation takes up to one day.
+2. Update the image daily and store it in google storage and the path to the asset under site collection
