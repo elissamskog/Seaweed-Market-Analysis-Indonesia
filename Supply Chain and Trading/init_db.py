@@ -61,7 +61,6 @@ def upload_customers(customers_data):
         except Exception as e:
             print(f"Failed to add customer: {e}")
 
-
 #Functino to upload order infromation
 def upload_orders(orders_data):
     for order in orders_data["Orders"]:
@@ -70,7 +69,6 @@ def upload_orders(orders_data):
         datetime_obj = datetime.fromisoformat(order["timestamp"].rstrip("Z"))
         
         order_data = {
-            "location_id": order["location_id"],
             "quantity": order["quantity"],
             "species": order["species"],
             "timestamp": datetime_obj,  # Use the datetime object directly
@@ -82,7 +80,6 @@ def upload_orders(orders_data):
             print(f"Order added to customer {customer_id} with ID: {doc_ref[1].id}")
         except Exception as e:
             print(f"Failed to add order for customer {customer_id}: {e}")
-
 
 #Function to upload seller information
 def upload_sellers(sellers_data):
@@ -96,7 +93,6 @@ def upload_sellers(sellers_data):
             print(f"Seller added with ID: {doc_ref[1].id}")
         except Exception as e:
             print(f"Failed to add seller: {e}")
-
 
 #Function to upload batch information
 def upload_batches(batches_data):
@@ -225,8 +221,8 @@ locations = {
 shipping_info = { #from och to vill vara locations IDs // ändra så att den tar in adress men sparas som location_id?
   "Routes": [
     {
-      "from_name": "Jl. RE Martadinata, Tanjung, Kec. Rasanae Bar., Kab. Bima, Nusa Tenggara Barat", 
-      "to_name": "Coaster, Tj. Mas, Kec. Semarang Utara, Kota Semarang, Jawa Tengah 50174",
+      "from_name": "D3eXYyxwtMqkq1Wib5t9", 
+      "to_name": "HHDecIcZAiIT4LxebYlZ",
       "type": "volume",
       "costs": {
         "32.6": 1242,
@@ -234,8 +230,8 @@ shipping_info = { #from och to vill vara locations IDs // ändra så att den tar
       }
     },
     {
-      "from": "port.mksr.slwsi",
-      "to": "port.srbya.java",
+      "from": "LXqSsMeIYZ74SJzXTB8X",
+      "to": "MLEV3NA8b2OAdInfRmPx",
       "type": "volume",
       "costs": {
         "32.6": 710,
@@ -243,8 +239,8 @@ shipping_info = { #from och to vill vara locations IDs // ändra så att den tar
       }
     },
     {
-      "from": "port.srbya.java",
-      "to": "port.slwsi_east.slwsi",
+      "from": "OAGG5Th2NF74eixoE2ET",
+      "to": "UC7o1ehmJ5bqoRUteInI",
       "type": "volume",
       "costs": {
         "32.6": 1301,
@@ -258,25 +254,21 @@ shipping_info = { #from och to vill vara locations IDs // ändra så att den tar
 customer_info = { #fixa location id
   "Customers": [
     {
-      "location_id": "0BlWKNv1YBCtguPRt2oa",
+      "location_id": "ZjPwjkZiS4U1ZUnwG3sX",
       "name": "Alpha Corp"
     },
     {
-      "location_id": "0QlmnbjcUNTvlz0qF5Nk",
+      "location_id": "c1ZsKpkEBskPRTqBvYXP",
       "name": "Beta Industries"
     },
     {
-      "location_id": "BQRGrQLaRUENgb4aegu1",
+      "location_id": "f5ypAdwO15vtigo1S33s",
       "name": "Gamma Logistics"
     },
     {
-      "location_id": "BlfTlFQbRtIIca7aaQB8",
+      "location_id": "jFh0NQwvTTolyVwyNPBL",
       "name": "Delta Trading"
     },
-    {
-      "location_id": "EDutDGSvlUTLOau78ARe",
-      "name": "Epsilon Manufacturing"
-    }
     # Add more customers as needed
   ]
 }
@@ -285,16 +277,14 @@ customer_info = { #fixa location id
 order_info = {
   "Orders": [
     {
-      "customer_id": "GlZ1wUCzEqjFKTvwHpAE",
-      "location_id": "5lvCO6a9Y6DUa9bjObyW",
+      "customer_id": "4gSJZZhEVJ7XZN5cRiGE",
       "quantity": 100,
       "species": "algae",
       "timestamp": "2023-03-06T12:00:00Z",
       "active": True
     },
     {
-      "customer_id": "NCnlpGAKh4pUv9S2BaW9",
-      "location_id": "7GrmjEBUBeXZ7bPlCIS0",
+      "customer_id": "9OAJDambJIG4Sys10QYG",
       "quantity": 200,
       "species": "coral",
       "timestamp": "2023-04-15T09:30:00Z",
@@ -308,15 +298,15 @@ order_info = {
 seller_info = {
   "Sellers": [
     {
-      "location_id": "0BlWKNv1YBCtguPRt2oa",
+      "location_id": "D3eXYyxwtMqkq1Wib5t9",
       "name": "Sunrise Supplies"
     },
     {
-      "location_id": "0QlmnbjcUNTvlz0qF5Nk",
+      "location_id": "HHDecIcZAiIT4LxebYlZ",
       "name": "Oceanic Products"
     },
     {
-      "location_id": "BQRGrQLaRUENgb4aegu1",
+      "location_id": "c1ZsKpkEBskPRTqBvYXP",
       "name": "Mountain View Resources"
     }
     #Add more sellers as needed
@@ -327,8 +317,8 @@ seller_info = {
 batch_info = {
   "Batches": [
     {
-      "seller_id": "btBOkDEjmv8tKGPIqiQe",
-      "location_id": "5lvCO6a9Y6DUa9bjObyW",
+      "seller_id": "2h1BzUvc6fP5uOjdH10f",
+      "location_id": "c1ZsKpkEBskPRTqBvYXP",
       "quantity": 500,
       "weight": 100,
       "volume": 100,
@@ -338,8 +328,8 @@ batch_info = {
       "active": True
     },
     {
-      "seller_id": "qU9uX2qNTgXil43VEgt5",
-      "location_id": "7GrmjEBUBeXZ7bPlCIS0",
+      "seller_id": "KJ8TjtiBuEqHWwUvEBx0",
+      "location_id": "lpS1tLJBcCu621Xleh59",
       "quantity": 300,
       "weight": 75,
       "volume": 80,
@@ -361,39 +351,5 @@ batch_info = {
 #upload_customers(customer_info)
 #upload_orders(order_info)
 #upload_sellers(seller_info)
-upload_batches(batch_info)
+#upload_batches(batch_info)
 
-
-###antecknignar###
-'''
-locations = {
-            "port.smg.java": "Coaster, Tj. Mas, Kec. Semarang Utara, Kota Semarang, Jawa Tengah 50174",
-            "wareh.smg.java": "Jl. Semboja, Petengan Selatan, Bintoro, Kec. Demak, Kabupaten Demak, Jawa Tengah 59511",
-            "port.srbya.java": "North Perak, Pabean Cantikan, Kota Surabaya, Jawa Timur 60165",
-            "port.bima.java": "Jl. RE Martadinata, Tanjung, Kec. Rasanae Bar., Kab. Bima, Nusa Tenggara Barat",
-            "port.mksr.slwsi": "Jl. Moh. Hatta No.32, Tamalabba, Kec. Ujung Tanah, Kota Makassar, Sulawesi Selatan 90163",
-            "port.smbwa.smbwa": "Jl. Labu Punti, Karang Dima, Labuhan Badas, Kabupaten Sumbawa, Nusa Tenggara Bar. 84316",
-            "port.slwsi_east.slwsi": "Bungkutoko, Abeli, Kendari City, South East Sulawesi; Sulawesi Tenggara",
-            "port.ambon.maluku": "Jl. Yos Sudarso No.16, Kel Wainitu, Kec. Nusaniwe, Kota Ambon, Maluku; Port Ambon",
-            "port.belitung.maluku": "Air Kelik, Damar, East Belitung Regency, Bangka Belitung Islands 33571;",
-            "farm.grc.brebes.java": "43WP+3GC, Jl. Perintis Kemerdekaan, Sawah, Kaligangsa Wetan, Kec. Brebes, Kabupaten Brebes, Jawa Tengah 52217",
-            "farm.grc.bekasi.java": "Jl. Raya Narogong No.79, RT.005/RW.002, Bojong Rawalumbu, Kec. Rawalumbu, Kota Bks, Jawa Barat 17116",
-            "farm.grc.sidoarjo.java": "Kecamatan Candi, Sidoarjo, Jawa Timur, Indonesien; Sidoarjo",
-            "farm.ulva.ygya.java": "2857+XJH, Gadingharjo, Donotirto, Kretek, Bantul Regency, Special Region of Yogyakarta 55772; Yogyakarta port",
-            "farm.ctni.smbwa.smbwa": ";CMP6+5HG, Labuan Kuris, Lape, Sumbawa Regency, West Nusa Tenggara",
-            "farm.ctni.smbwa.smbwa": "Dusun Bukit Tinggi Rt.003/ Rw.002, Desa, Pidang, Kec. Tarano, Kabupaten Sumbawa, Nusa Tenggara Bar",
-            "farm.ctni.ambon.maluku": ";9993+CM, Tial, Salahutu, Central Maluku Regency, Maluku",
-            "farm.ctni.belitung.maluku": ";Jl. Tj. Ruu, Pegantungan, Badau, Kabupaten Belitung, Kepulauan Bangka Belitung 33452",
-            "farm.grc_ulva.bima.smbwa": ";Jl. Lintas Sape - Wera, Lamere, Kec. Sape, Kabupaten Bima, Nusa Tenggara Bar. 84182; Bima Regency",
-            "farm.grc_ulva_ctni.mksr.slwsi": "Dusun Sampulungan Caddi, Desa Sampulungan, Kec. Galesong Utara, Kabupaten Takalar, Sulawesi Selatan 92255"
-        }
-'''
-
-
-'''
-shipping_info = {
-    "port.bima.java-port.smg.java": {"32.6m3": 1242, "67m3": 1538},
-    "port.mksr.slwsi-port.srbya.java": {"32.6m3": 710, "67m3": 1420},
-    "port.srbya.java-port.slwsi_east.slwsi": {"32.6m3": 1301, "67m3": 2958}
-}
-'''

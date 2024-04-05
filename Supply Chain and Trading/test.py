@@ -1,62 +1,36 @@
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import firestore
 from SupplyChain import SupplyChain
 import networkx as nx
-
-def test():
-    supply_chain = SupplyChain()
-
-    #supply_chain.build_network_graph()
-    supply_chain.SCN = nx.Graph()
-
-    SCN = nx.Graph()
-
-    # Add mock locations
-    supply_chain.SCN.add_node("Location_A")
-    supply_chain.SCN.add_node("Location_B")
-    supply_chain.SCN.add_node("Customer_Location")
+import unittest
 
 
-    # Add mock routes with tiered costs
-    supply_chain.SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
-    supply_chain.SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})
 
-    # Add mock locations
-    SCN.add_node("Location_A")
-    SCN.add_node("Location_B")
-    SCN.add_node("Customer_Location")
+class TestSupplyChain(unittest.TestCase):
+    def setUp(self):
+        # Initialize your SupplyChain class here. This ensures 'sc' is available as 'self.sc' in every test method.
+        self.sc = SupplyChain()
 
-    # Add mock routes with tiered costs
-    SCN.add_edge("Location_A", "Location_B", type='weight', costs={'100': 150, '200': 250})
-    SCN.add_edge("Location_B", "Customer_Location", type='volume', costs={'50': 100, '100': 180})
-    
-    supply_chain.store_network()
+        # Define test destinations based on your Firestore setup
+        destinations = ['c1ZsKpkEBskPRTqBvYXP', 'ZjPwjkZiS4U1ZUnwG3sX']  # Adjust accordingly
 
-    supply_chain.read_network()
+        # Execute the method under test to build the graph for each test method
+        self.sc.build_network_graph(destinations)
 
-    print(compare_graphs(supply_chain.SCN, SCN))
+    def test_build_network_graph(self):
+        print("\nNodes in the graph:")
+        for node, attrs in self.sc.SCN.nodes(data=True):
+            node_type = attrs.get('type')
+            print(f"Node ID: {node}, Type: {node_type}")
+        
+        print("\nEdges in the graph (pointing information):")
+        for from_node, to_node, attributes in self.sc.SCN.edges(data=True):
+            # Optionally, include edge attributes in the print statement if needed
+            edge_attributes = ', '.join([f"{key}: {value}" for key, value in attributes.items()])
+            from_node_type = self.sc.SCN.nodes[from_node].get('type')
+            to_node_type = self.sc.SCN.nodes[to_node].get('type')
+            print(f"{from_node} ({from_node_type}) -> {to_node} ({to_node_type})")
 
-def compare_graphs(g1, g2):
-    # Check for isomorphism
-    if not nx.is_isomorphic(g1, g2):
-        return False, "Graphs are not isomorphic."
-    
-    # Check node attributes
-    for node in g1.nodes:
-        if g1.nodes[node] != g2.nodes[node]:
-            return False, f"Node attributes differ for node {node}."
-    
-    # Check edge attributes
-    for edge in g1.edges:
-        if g1.edges[edge] != g2.edges[edge]:
-            return False, f"Edge attributes differ for edge {edge}."
-    
-    # If all checks passed
-    return True, "Graphs are isomorphic and all attributes match."
-
-# Example usage:
-# g1 and g2 are your NetworkX graph objects
-# is_equal, message = compare_graphs(g1, g2)
-# print(message)
-
-
-if __name__ == "__main__":
-    test()
+if __name__ == '__main__':
+    unittest.main()
