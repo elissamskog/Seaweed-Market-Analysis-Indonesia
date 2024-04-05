@@ -161,6 +161,18 @@ Back-End Logic
 
 Supply Chain Management: The system uses the network graph to optimize routes and manage supply chain logistics based on the current state of batches, customer orders, and available routes.
 
+Construct a Network Graph: Each batch forms bidirectional connections with other batches if they reside on the same island, ensuring no links are established with batches on different islands. Additionally, each batch directs connections towards all locations within the same island. Customers are interconnected through bidirectional links. Ports, in a similar manner, establish bidirectional connections with all other ports and extend connections towards customers. wharehouses 
+
+port <--> port
+wharehouse --> Customer
+wharehouse <--> wharehouse
+Customer <--> Customer
+batches <--> batches 
+batches --> port
+batches --> wharehouse
+
+
+
 Network Graph (Supply Chain Network)
 This is a simplified Network of our supply_chain
 
