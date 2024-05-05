@@ -4,7 +4,7 @@ from firebase_admin import firestore
 import networkx as nx
 from networkx.readwrite import json_graph
 from google_distance import compute_distance
-#from trading_opt import Optimize
+from trading_opt import Optimize
 import json
 
 cred = credentials.Certificate("C:/Users/August/alginnova_jobb/firebaseAPI/firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json")
