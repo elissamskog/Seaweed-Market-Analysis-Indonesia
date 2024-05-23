@@ -5,6 +5,7 @@ Locations Collection:
 Document ID: Unique identifier for each location, Firebase naming conventions
 Fields:
 address: String, the physical address of the location.
+country: String
 island: String, island name
 type: String, the type of location (e.g., port, warehouse, farm, customer, seller).
 
@@ -26,8 +27,8 @@ name: String, internal name for the seller.
     Document ID: Unique identifier for each batch
     Fields:
     quantity: Number, the quantity of product in the batch.
-    weight: Number, the weight of the batch (m3).
-    volume: Number, the volume of the batch (volume).
+    weight: Number, the weight of the batch (metric tonnes).
+    volume: Number, the volume of the batch (m3).
     type: String, the type of the product in the batch.
     cost: Number, the cost of the entire batch, which is zero if it's already owned.
     timestamp: Timestamp, the creation or update time of the batch.
@@ -45,6 +46,7 @@ name: String, internal name for the customer.
     type: String, the type of product required.
     timestamp: Timestamp, the creation or update time of the order.
     active: Boolean, indicating if the order is active.
+
 
 Ongoing Routes Collection:
 Document ID: A unique identifier for each trade permutation
@@ -72,12 +74,14 @@ Supply Chain Management: The system uses the network graph to optimize routes an
 Construct a Network Graph: Each batch forms bidirectional connections with other batches if they reside on the same island, ensuring no links are established with batches on different islands. Additionally, each batch directs connections towards all locations within the same island. Customers are interconnected through bidirectional links. Ports, in a similar manner, establish bidirectional connections with all other ports and extend connections towards customers. wharehouses 
 
 port <--> port
-wharehouse --> Customer
-wharehouse <--> wharehouse
-Customer <--> Customer
-batches <--> batches 
-batches --> port
-batches --> wharehouse
+warehouse --> customer
+warehouse <--> warehouse (if on the same island)
+customer <--> customer (if on the same island)
+farm <--> batches (if on the same island)
+farm --> customer (if on the same island)
+farm --> port
+farm --> warehouse
+
 
 
 

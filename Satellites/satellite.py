@@ -1,7 +1,8 @@
 import requests
+import firebase_admin
+from firebase_admin import credentials, storage
+import io
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
-
 
 def get_access_token(client_id, client_secret):
     url = "https://services.sentinel-hub.com/oauth/token"
@@ -15,123 +16,232 @@ def get_access_token(client_id, client_secret):
     }
 
     response = requests.post(url, data=payload, headers=headers)
-
     if response.ok:
         return response.json().get('access_token')
     else:
         raise Exception(f"Error obtaining token: {response.text}")
 
-def create_AOI_subscription(name, access_token, bbox, planetApiKey, max_cloud_coverage=20):
-    url = "https://services.sentinel-hub.com/api/v1/dataimport/tiledeliveries"
+def upload_to_firebase(bucket, image_content, destination_blob_name):
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_string(image_content, content_type='image/png')
+    print(f"File uploaded to {destination_blob_name}.")
+
+def fetch_image(access_token, collection_id, time_from, time_to, geometry, bucket_name, destination_blob_name):
+    url = "https://services.sentinel-hub.com/api/v1/process"
     headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
     }
-
-    start_date = datetime.now() - timedelta(days=1)
-    end_date = datetime.now() + relativedelta(years=1)
-
-    start_date_str = start_date.strftime('%Y-%m-%dT00:00:00Z')
-    end_date_str = end_date.strftime('%Y-%m-%dT23:59:59Z')
-
-    data_filter = {
-        "timeRange": {
-            "from": start_date_str,
-            "to": end_date_str
-        },
-        "maxCloudCoverage": max_cloud_coverage
-    }
-
     payload = {
-        "name": name,
         "input": {
-            "provider": "PLANET",
-            "planetApiKey": planetApiKey,
             "bounds": {
-                "bbox": bbox
+                "properties": {
+                    "crs": "http://www.opengis.net/def/crs/EPSG/0/4326"
+                },
+                "geometry": geometry
             },
             "data": [{
-                "productBundle": "analytic_sr_udm2",
-                "type": "PSScene",
-                "dataFilter": data_filter
+                "type": f"byoc-{collection_id}",
+                "dataFilter": {
+                    "timeRange": {
+                        "from": time_from,
+                        "to": time_to
+                    }
+                }
             }]
-        }
+        },
+        "output": {
+            "width": 2000,
+            "height": 2000
+        },
+        "evalscript": """
+            //VERSION=3
+            //True Color
+
+            function setup() {
+            return {
+                input: ["red", "green", "blue", "dataMask"],
+                output: { bands: 4 }
+            };
+            }
+
+            function evaluatePixel(sample) {
+            return [sample.red/3000, 
+                    sample.green/3000, 
+                    sample.blue/3000,
+                    sample.dataMask];
+            }
+        """
     }
 
     response = requests.post(url, headers=headers, json=payload)
-    return response.json()
-
-def confirm_subscription(access_token, subscription_id):
-    url = f"https://services.sentinel-hub.com/api/v1/dataimport/subscriptions/{subscription_id}/confirm"
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
-
-    response = requests.post(url, headers=headers)
-
-    if response.ok:
-        return response.json()  # Confirmation successful
+    if response.status_code == 200:
+        # Use in-memory storage
+        image_content = response.content
+        print(f"Image fetched successfully.")
+        
+        # Upload the image to Firebase Storage
+        upload_to_firebase(bucket, image_content, destination_blob_name)
     else:
-        raise Exception(f"Error confirming subscription: {response.text}")
+        print(f"Failed to fetch image: {response.status_code} - {response.text}")
 
+def main(event, context):
+    # Initialize Firebase Admin SDK
+    cred = credentials.Certificate('/path/to/serviceAccountKey.json')
+    firebase_admin.initialize_app(cred, {
+        'storageBucket': 'your-bucket-name.appspot.com'
+    })
 
-def fetch_latest_delivery(access_token, subscription_id):
-    url = f"https://services.sentinel-hub.com/api/v1/dataimport/subscriptions/{subscription_id}/deliveries"
-    headers = {
-        'Authorization': f'Bearer {access_token}'
-    }
-
-    # Fetch the list of deliveries for the subscription
-    response = requests.get(url, headers=headers)
-    if response.ok:
-        deliveries = response.json()
-
-        # Assuming the deliveries are sorted by date, or you can sort them
-        latest_delivery = deliveries[0]  # Assuming the first one is the latest
-
-        return latest_delivery
-    else:
-        raise Exception(f"Error fetching deliveries: {response.text}")
-
-
-def fetch_latest_image(access_token, subscription_id):
-    latest_delivery = fetch_latest_delivery(access_token, subscription_id)
-    delivery_id = latest_delivery['id']
-
-    url = f"https://services.sentinel-hub.com/api/v1/dataimport/subscriptions/{subscription_id}/deliveries/{delivery_id}/files"
-    headers = {
-        'Authorization': f'Bearer {access_token}'
-    }
-
-    response = requests.get(url, headers=headers)
-    if response.ok:
-        return response.content
-    else:
-        raise Exception(f"Error retrieving file: {response.text}")
-
-
-def main():
-    # From Sentinelhub under user settings, admin credentials
+    bucket = storage.bucket()
     client_id = '9a5c8df7-077a-4d3c-8705-65c9019d75ed'
     client_secret = '7yq74fjN7uIe0lq9cIuUcmQrwdfQBkVR'
     access_token = get_access_token(client_id, client_secret)
 
-    # bbox is the longitude, latitude coordinates for the corner vertices of the desired area
-    planetApiKey = 'PLAK7b3c47495b4e48a4848b0aed067d8fae'
-    bbox = [13.822174072265625, 45.85080395917834, 
-            14.55963134765625, 46.29191774991382]
-    name = 'UserXCollection'
+    collection_id = 'b88c67ae-a815-4854-8f87-99dd1bd01c16'
 
-    # Creates a subscription
-    subscription_response = create_AOI_subscription(access_token, bbox, planetApiKey)
-    subscription_id = subscription_response['id']
+    geometry = {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            118.226624,
+            -8.658627
+          ],
+          [
+            118.227353,
+            -8.658987
+          ],
+          [
+            118.228168,
+            -8.658966
+          ],
+          [
+            118.228898,
+            -8.659709
+          ],
+          [
+            118.229949,
+            -8.659963
+          ],
+          [
+            118.230314,
+            -8.661406
+          ],
+          [
+            118.229928,
+            -8.662912
+          ],
+          [
+            118.228984,
+            -8.665606
+          ],
+          [
+            118.227718,
+            -8.6662
+          ],
+          [
+            118.225744,
+            -8.666157
+          ],
+          [
+            118.223877,
+            -8.665988
+          ],
+          [
+            118.222611,
+            -8.665266
+          ],
+          [
+            118.223062,
+            -8.663591
+          ],
+          [
+            118.222203,
+            -8.662975
+          ],
+          [
+            118.221796,
+            -8.663251
+          ],
+          [
+            118.221195,
+            -8.662997
+          ],
+          [
+            118.220057,
+            -8.663739
+          ],
+          [
+            118.218899,
+            -8.663548
+          ],
+          [
+            118.21774,
+            -8.663803
+          ],
+          [
+            118.217397,
+            -8.660621
+          ],
+          [
+            118.217311,
+            -8.657481
+          ],
+          [
+            118.217826,
+            -8.654469
+          ],
+          [
+            118.219221,
+            -8.652051
+          ],
+          [
+            118.219886,
+            -8.652475
+          ],
+          [
+            118.220873,
+            -8.652454
+          ],
+          [
+            118.221946,
+            -8.652602
+          ],
+          [
+            118.222632,
+            -8.653111
+          ],
+          [
+            118.221903,
+            -8.655508
+          ],
+          [
+            118.222396,
+            -8.657184
+          ],
+          [
+            118.223512,
+            -8.658415
+          ],
+          [
+            118.225057,
+            -8.658754
+          ],
+          [
+            118.226624,
+            -8.658627
+          ]
+        ]
+      ]
+    } # Should be fetched from firebase
+    now = datetime.utcnow()
 
-    # There should be a manual response to confirm the subscription from an admin
-    confirmation_response = confirm_subscription(access_token, subscription_id)
+    # Calculate the time one day ago
+    time_from = now - timedelta(days=1)
 
-    # Every 24 hours the latest image is found
-    image_data = fetch_latest_image(access_token, subscription_id)
+    # Format the times as required by the API
+    time_from = time_from.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    time_to = now.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    destination_blob_name = "gs://alginnova-f177f.appspot.com/remote/sites/3/satellite_images"
 
-if __name__ == '__main__':
-    main()
+    fetch_image(access_token, collection_id, time_from, time_to, geometry, bucket.name, destination_blob_name)

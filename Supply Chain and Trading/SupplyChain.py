@@ -4,138 +4,121 @@ from firebase_admin import firestore
 import networkx as nx
 from networkx.readwrite import json_graph
 from google_distance import compute_distance
-from trading_opt import Optimize
+#from trading_opt import Optimize
 import json
 
-cred = credentials.Certificate("C:/Users/August/alginnova_jobb/firebaseAPI/firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json")
+cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
 firebase_admin.initialize_app(cred)
 
 class SupplyChain:
     def __init__(self):
         # Firebase Admin SDK Initialization
-        
         self.db = firestore.client()
+    
+    def on_same_island(self, loc_id1, loc_id2):
+        # Fetch the document references from the Firestore database
+        doc_ref1 = self.db.collection('Locations').document(loc_id1)
+        doc_ref2 = self.db.collection('Locations').document(loc_id2)
         
-    def build_network_graph(self, destinations):
+        # Get the documents
+        doc1 = doc_ref1.get()
+        doc2 = doc_ref2.get()
+        
+        if not doc1.exists or not doc2.exists:
+            raise ValueError("One or both location IDs do not exist in the database.")
+        
+        # Extract the 'island' fields from the documents
+        island1 = doc1.to_dict().get('island')
+        island2 = doc2.to_dict().get('island')
+    
+        return island1 == island2
+
+    def calculate_estimated_costs(self, distance):
+        # Placeholder calculation for extimating cost for transport by truck
+        return distance * 10
+
+    def build_network_graph(self):
         # Initialize directed graph
-        G = nx.DiGraph()
+        self.G = nx.DiGraph()
 
-        # Fetch all locations and filter for transport locations
-        locations = list(self.db.collection('Locations').stream())  # Convert query to list
-        transport_locations = []
-        ports = []
+        # Fetch all locations and store them in a dictionary for easy lookup
+        locations = {doc.id: doc.to_dict() for doc in self.db.collection('Locations').stream()}
+
+        # Fetch all routes (not directly used for the rules given but could be extended to use route data)
+        # routes = {doc.id: doc.to_dict() for doc in self.db.collection('Routes').stream()}
+
+        # Add nodes for locations except customers and sellers
+        for loc_id, loc_data in locations.items():
+            if loc_data['type'] not in ['customer', 'seller']:
+                self.G.add_node(loc_id, **loc_data)
+
+        # Process active orders or batches for customers and sellers
+            if loc_type in ['customer', 'seller']:
+                subcollection_name = 'orders' if loc_type == 'customer' else 'batches'
+                subdocs = self.db.collection('Locations').document(loc_id).collection(subcollection_name).where('active', '==', True).stream()
+
+                # Add nodes for active orders or batches
+                active_found = False
+                for subdoc in subdocs:
+                    subdoc_data = subdoc.to_dict()
+                    # Check if the subdoc is active
+                    if subdoc_data.get('active', False):  # This will use False as default if 'active' is not present
+                        active_found = True
+
+                if active_found:
+                    # Only add the customer or seller node if there are active subdocuments
+                    self.G.add_node(loc_id, **loc_data)
+
         
-        # Define a helper function to filter transport locations
-        def is_transport_location(location):
-            return location.get('type') not in ['customer', 'seller', 'farm']
+        # Now iterate over each node to apply directional edge logic
+        for loc_id in list(self.G.nodes):
+            loc_data = self.G.nodes[loc_id]
+            loc_type = loc_data.get('type')
 
-        # Process locations
-        for location in locations:
-            if is_transport_location(location):
-                location_id = location.id
-                G.add_node(location_id, type=location.get('type'), island=location.get('island'))
-                transport_locations.append(location)
-                if location.get('type') == 'port':  # Check if the location is a port
-                    ports.append(location)  # Add to the ports list
-                
+            for other_id in list(self.G.nodes):
+                if loc_id == other_id:
+                    continue  # Avoid self-loops
 
-        # Add sink nodes from destinations
-        for destination_id in destinations:
-            destination_doc = self.db.collection('Locations').document(destination_id).get()
-            destination_data = destination_doc.to_dict()
-            G.add_node(destination_id, type='sink', island=destination_data.get('island'))
+                other_data = self.G.nodes[other_id]
+                other_type = other_data.get('type')
 
-        # Connect all locations to each other, bidirectionally
-        for i, loc1 in enumerate(transport_locations):
-            for loc2 in transport_locations[i+1:]:
-                # Check if both are ports, then connect them
-                if loc1.get('type') == 'port' and loc2.get('type') == 'port':
-                    G.add_edge(loc1.id, loc2.id)
-                    G.add_edge(loc2.id, loc1.id)
-                # If neither is a port, connect them bidirectionally
-                elif loc1.get('type') != 'port' and loc2.get('type') != 'port':
-                    G.add_edge(loc1.id, loc2.id)
-                    G.add_edge(loc2.id, loc1.id)
-                # If one is a port and the other is not, do not connect them
+                # Connecting warehouses to customers (unidirectional)
+                if loc_type == 'warehouse' and other_type == 'customer' and self.on_same_island(loc_id, other_id):
+                    self.G.add_edge(loc_id, other_id)
 
-       # Process sellers to fetch batches
-        sellers = list(self.db.collection('Sellers').stream())
-        all_batches = []
-        for seller in sellers:
-            # Fetch batches from the 'Batches' subcollection for each seller
-            batches = list(self.db.collection('Sellers').document(seller.id).collection('Batches').stream())
-            for batch in batches:
-                batch_id = batch.id
-                batch_data = batch.to_dict()  # Convert to dict to access data
+                # Connecting ports to each other (bidirectional)
+                elif loc_type == 'port' and other_type == 'port':
+                    self.G.add_edge(loc_id, other_id)
+                    self.G.add_edge(other_id, loc_id)
 
-                # Fetch the location document using the location_id from the batch
-                location_id = batch_data.get('location_id')
-                if location_id:
-                    location_doc = self.db.collection('Locations').document(location_id).get()
-                    if location_doc.exists:
-                        island = location_doc.to_dict().get('island')  # Extract the island information
-                    
-                        # Ensure island information is available before proceeding
-                        if island:
-                            # Now you have the island information; you can add the batch node with this info
-                            all_batches.append({'id': batch.id, 'location_id': location_id, 'island': island})
-                            G.add_node(batch_id, type='batch', island=island)
-                            
-                            for batch in all_batches:
-                                for other_batch in [ob for ob in all_batches if ob['id'] != batch['id'] and ob['island'] == batch['island']]:
-                                    G.add_edge(batch['id'], other_batch['id'] )
-                                    G.add_edge(other_batch['id'], batch['id'])
+                # Connecting warehouses on the same island (bidirectional)
+                elif loc_type == 'warehouse' and other_type == 'warehouse' and self.on_same_island(loc_id, other_id):
+                    self.G.add_edge(loc_id, other_id)
+                    self.G.add_edge(other_id, loc_id)
 
-                    
-                # Connect batch to locations on the same island, unidirectionally
-                for seller in sellers:
-                    batches = list(self.db.collection('Sellers').document(seller.id).collection('Batches').stream())
-                    for batch in batches:
-                        batch_id = batch.id
-                        batch_data = batch.to_dict()  # Convert to dict to access data
+                # Connecting customers on the same island (bidirectional)
+                elif loc_type == 'customer' and other_type == 'customer' and self.on_same_island(loc_id, other_id):
+                    self.G.add_edge(loc_id, other_id)
+                    self.G.add_edge(other_id, loc_id)
 
-                        # Ensure island information is available before proceeding
-                        location_id = batch_data.get('location_id')
-                        if location_id:
-                            location_doc = self.db.collection('Locations').document(location_id).get()
-                            if location_doc.exists:
-                                location_data = location_doc.to_dict()
-                                island = location_data.get('island')  # Extract the island information
-                                if island:
-                                    # Only add edge from batch to location, not vice versa
-                                    for loc in [loc for loc in transport_locations if loc.get('island') == island]:
-                                        G.add_edge(batch_id, loc.id)
+                # Connecting farms to ports (unidirectional)
+                if loc_type == 'farm' and other_type == 'port':
+                    self.G.add_edge(loc_id, other_id)
 
+                # Connecting farms to warehouses (unidirectional)
+                if loc_type == 'farm' and other_type == 'warehouse':
+                    self.G.add_edge(loc_id, other_id)
 
-       # Fetch customers directly from the Customers collection and add them as nodes
-        customers = list(self.db.collection('Customers').stream())
-        for customer_snapshot in customers:
-            customer_id = customer_snapshot.id
-            customer_data = customer_snapshot.to_dict()
-            # Assuming you have 'island' information for customers or you can omit it
-            G.add_node(customer_id, type='customer', **customer_data)
+                # Connecting farms to customers on the same island (unidirectional)
+                if loc_type == 'farm' and other_type == 'customer' and self.on_same_island(loc_id, other_id):
+                    self.G.add_edge(loc_id, other_id)
 
-        # After adding customer nodes, connect customers bidirectionally
-        for customer_snapshot in customers:
-            customer_id = customer_snapshot.id
-            for other_customer_snapshot in customers:
-                other_customer_id = other_customer_snapshot.id
-                if customer_id != other_customer_id:
-                    G.add_edge(customer_id, other_customer_id)
-                    G.add_edge(other_customer_id, customer_id)
+                # Connecting farms to batches on the same island (bidirectional)
+                # Assuming 'batches' are identifiable by a specific node attribute or type
+                if loc_type == 'farm' and 'batch' in other_id and self.on_same_island(loc_id, other_id):
+                    self.G.add_edge(loc_id, other_id)
+                    self.G.add_edge(other_id, loc_id)
 
-        # Connect transport locations to customers unidirectionally
-        for loc in transport_locations:
-            # Skip if the location is a port
-            if loc.get('type') == 'port':
-                continue
-            
-            for customer_snapshot in customers:
-                customer_id = customer_snapshot.id
-                # Add edge from location to customer, ensuring it's unidirectional
-                G.add_edge(loc.id, customer_id)
-
-        self.SCN = G
         self.build_edges()  # Ensure this method is updated for bidirectional and cost estimation logic
         
     def build_edges(self):
@@ -154,13 +137,13 @@ class SupplyChain:
                 costs = route['costs']
 
                 # Update edge with route data if edge exists
-                if self.SCN.has_edge(from_location, to_location):
-                    self.SCN[from_location][to_location]['type'] = route_type
-                    self.SCN[from_location][to_location]['costs'] = costs
+                if self.G.has_edge(from_location, to_location):
+                    self.G[from_location][to_location]['type'] = route_type
+                    self.G[from_location][to_location]['costs'] = costs
                 # If no direct route exists, check for and use data from reverse route if it exists
-                elif self.SCN.has_edge(to_location, from_location):
-                    reverse_edge_data = self.SCN[to_location][from_location]
-                    self.SCN.add_edge(from_location, to_location, type=reverse_edge_data['type'], costs=reverse_edge_data['costs'])
+                elif self.G.has_edge(to_location, from_location):
+                    reverse_edge_data = self.G[to_location][from_location]
+                    self.G.add_edge(from_location, to_location, type=reverse_edge_data['type'], costs=reverse_edge_data['costs'])
                 # Calculate and add estimated costs if no direct or reverse route exists
                 else:
                     # Placeholder for address retrieval and distance calculation
@@ -170,10 +153,10 @@ class SupplyChain:
                         from_address = from_address_doc.to_dict().get('address')
                         to_address = to_address_doc.to_dict().get('address')
                         # Compute distance and estimated costs (assuming compute_distance is defined)
-                        distance = self.compute_distance(from_address, to_address)
+                        distance = compute_distance(from_address, to_address)
                         estimated_costs = self.calculate_estimated_costs(distance)  
                         # Update edge with estimated costs
-                        self.SCN.add_edge(from_location, to_location, type='estimated', costs=estimated_costs)
+                        self.G.add_edge(from_location, to_location, type='estimated', costs=estimated_costs)
 
     def min_transport_cost(self, destinations):
         '''destinations contains the id of the location document'''
@@ -245,51 +228,11 @@ class SupplyChain:
                 }
 
         # Optimize transportation costs with all available batches and orders
-        results = Optimize(self.SCN, batches, orders)
+        results = Optimize(self.G, batches, orders)
         optimized_results = results.results
 
         # Process and return results
         return optimized_results
 
-    def store_network(self):
-        # Reference to the 'networks' collection
-        collection_ref = self.db.collection('networks')
-        
-        # Attempt to delete the existing document, assuming a single document management strategy
-        for doc in collection_ref.stream():
-            doc.reference.delete()
-            print(f"Deleted existing document: {doc.id}")
-
-        # Serialize the NetworkX graph to a JSON-serializable dict
-        stored_SCN = nx.readwrite.json_graph.node_link_data(self.SCN)
-        graph_json = json.dumps(stored_SCN)
-
-        # Since we're assuming a single document strategy, we can use a fixed document name
-        # If you want to make it dynamic or based on some attribute, adjust accordingly
-        doc_name = "current_network"
-        doc_ref = collection_ref.document(doc_name)  # Use a consistent document name
-        doc_ref.set({'network_': graph_json})
-
-        print(f"Graph stored in Firestore collection networks with document name {doc_name}")
-
-    def read_network(self):
-        # Fetch all documents in the 'networks' collection
-        docs = self.db.collection('networks').limit(1).stream()
-
-        # Attempt to get the first document from the iterator
-        doc = next(docs, None)
-
-        if doc:
-            # Deserialize the graph data from JSON back to a dictionary
-            graph_data = json.loads(doc.to_dict()['network_'])
-
-            # Use the dictionary to recreate the NetworkX graph
-            self.SCN = json_graph.node_link_graph(graph_data)
-
-            print(f"Graph successfully read and reconstructed from document {doc.id}.")
-        else:
-            print("No document found in the 'networks' collection.")
-            self.SCN = None
-
-
-
+sc = SupplyChain()
+sc.build_network_graph()

@@ -7,7 +7,7 @@ from datetime import datetime
 
 # Firebase Admin SDK Initialization
 #cred = credentials.Certificate("/Users/elissamskog/JupyterProjects/alginnova/Firebase/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json")
-cred = credentials.Certificate("C:/Users/August/alginnova_jobb/firebaseAPI/firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json")
+cred = credentials.Certificate('firebase_auth_token/alginnova-f177f-firebase-adminsdk-1hr5k-b3cac9ea17.json')
 firebase_admin.initialize_app(cred)
 
 # Firestore client instance
@@ -221,8 +221,8 @@ locations = {
 shipping_info = { #from och to vill vara locations IDs // ändra så att den tar in adress men sparas som location_id?
   "Routes": [
     {
-      "from_name": "D3eXYyxwtMqkq1Wib5t9", 
-      "to_name": "HHDecIcZAiIT4LxebYlZ",
+      "from": "D3eXYyxwtMqkq1Wib5t9", 
+      "to": "HHDecIcZAiIT4LxebYlZ",
       "type": "volume",
       "costs": {
         "32.6": 1242,
