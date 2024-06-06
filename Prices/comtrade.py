@@ -1,7 +1,7 @@
 import pandas as pd
 import comtradeapicall
 
-subscription_key = '<206b2bb1bc284df0a48db90a837e2557>'  # Replace with your actual key
+subscription_key = '<206b2bb1bc284df0a48db90a837e2557>'
 
 mydf = comtradeapicall.previewFinalData(typeCode='C', freqCode='A', clCode='HS', period='2020',
                                         reporterCode='360', cmdCode='12', flowCode=None, partnerCode=None,
