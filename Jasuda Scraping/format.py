@@ -49,7 +49,7 @@ def calculate_average_percentage(percentage_range):
         return None
 
 
-df = pd.read_excel('/Users/elissamskog/JupyterProjects/Jasuda Scraping/output.xlsx')
+df = pd.read_excel('Jasuda Scraping/output.xlsx')
 
 # Apply the conversion function to the 'Date' column
 df['Date'] = df['Date'].apply(convert_date)

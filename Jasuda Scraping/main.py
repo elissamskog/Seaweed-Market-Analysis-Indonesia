@@ -41,8 +41,8 @@ def thread_function(session):
 
 def main():
     data_list = []
+    # Number of threads and iterations to use
     iterations = 4000
-    # Number of threads to use
     num_threads = 10
 
     with requests.Session() as s:
@@ -59,7 +59,7 @@ def main():
 
     df = pd.DataFrame(data_list, columns=columns)
     df = df.drop_duplicates(keep='first')
-    df.to_excel('alginnova/Jasuda Scraping/output.xlsx', index=False)
+    df.to_excel('Jasuda Scraping/output.xlsx', index=False)
 
 
 if __name__ == '__main__':

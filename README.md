@@ -21,6 +21,7 @@ name: String, name of the product
 HS: String, HS-code of the product
 sample: Boolean, true if it is a sample
 MOQ_pallet_ratio: Number, how much the MOQ fills one standard ISO pallet (not in percentage)
+Biological: Boolean, true if a biological product
 
 Warehouse Collection:
 Document ID: Unique identifier for each warehouse, Firebase naming conventions
@@ -44,9 +45,8 @@ name: String, internal name for the customer
     Fields:
     order data: Map/Object, the firebase identifier of the product(s) in the Products Collection with associated quantity of MOQ 
     (e.g {product1: 2, product2, 1}, where the values refer to the number of MOQ's)
-    
     timestamp: Timestamp, the creation or update time of the order
-    active: Boolean, indicating if the order is active
+    status: String, indicating the order status
 
 Locations Collection:
 Document ID: Unique identifier for each location, Firebase naming conventions

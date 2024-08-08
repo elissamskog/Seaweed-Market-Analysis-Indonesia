@@ -1,4 +1,4 @@
-#!/Users/elissamskog/VSC/firebaseAPI/.venv/bin/python
+#!/Users/elissamskog/VSC/firebaseAPI/.venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys
