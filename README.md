@@ -20,6 +20,7 @@ Fields:
 name: String, name of the product
 HS: String, HS-code of the product
 sample: Boolean, true if it is a sample
+MOQ: Number, the minimum order quantity in weight or amount
 MOQ_pallet_ratio: Number, how much the MOQ fills one standard ISO pallet (not in percentage)
 Biological: Boolean, true if a biological product
 
@@ -38,13 +39,13 @@ location: String, the firebase identifier of the location in the Locations Colle
 Customers Collection:
 Document ID: customer_id, a unique identifier for each customer
 Fields:
-location_id: String, location of the customer
+location_id: String, location id of the customer
 name: String, internal name for the customer
 
     Orders Subcollection:
     Fields:
-    order data: Map/Object, the firebase identifier of the product(s) in the Products Collection with associated quantity of MOQ 
-    (e.g {product1: 2, product2, 1}, where the values refer to the number of MOQ's)
+    order data: Map/Object, the firebase identifier of the product(s) in the Products Collection with associated quantity
+    e.g {product1: 2, product2, 1}
     timestamp: Timestamp, the creation or update time of the order
     status: String, indicating the order status
 
