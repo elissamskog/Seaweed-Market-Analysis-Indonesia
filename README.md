@@ -18,10 +18,10 @@ Products Collection:
 Document ID: Unique identifier for each product, Firebase naming conventions
 Fields:
 name: String, name of the product
-HS: String, HS-code of the product
-sample: Boolean, true if it is a sample
+code: String, internal identifier of product
+price: Number, price in USD
 MOQ: Number, the minimum order quantity in weight or amount
-MOQ_pallet_ratio: Number, how much the MOQ fills one standard ISO pallet (not in percentage)
+notes: String, any additional relevant information
 Biological: Boolean, true if a biological product
 
 Warehouse Collection:
@@ -54,7 +54,7 @@ Document ID: Unique identifier for each location, Firebase naming conventions
 Fields:
 address: String, the physical address of the location.
 country: String
-island: String, island name
+island: String, island name (only applicable in Indonesia)
 type: String, the type of location (e.g., port, warehouse, farm, customer, seller)
 
 Routes Collection:
